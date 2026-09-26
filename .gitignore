@@ -10,6 +10,9 @@ venv/
 # 运行时数据（账号 SQLite 等），绝不可入库
 data/
 data_test/
+# 本机构建产物与运行时缓存（补丁 Chromium 缓存目录由 CLOAKBROWSER_CACHE_DIR 指到仓库根）
+zcode2api-core.exe
+chromium-*/
 # 账号导出（含明文凭证；export 子命令默认写到这里）
 zcode-accounts.json
 
