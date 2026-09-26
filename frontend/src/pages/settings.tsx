@@ -8,6 +8,7 @@
  * 標籤下方而非輸入框下方，因為它解釋的是「這個欄位是什麼」而不是輸入格式。 */
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { KeyRound, Loader2, UserCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -21,6 +22,7 @@ import { api, errMsg } from '@/lib/api'
 import type { SettingsResponse } from '@/lib/types'
 
 export function SettingsPage() {
+  const { t } = useTranslation()
   const { data } = useQuery({
     queryKey: ['settings'],
     queryFn: () => api<SettingsResponse>('GET', '/settings'),
@@ -51,16 +53,16 @@ export function SettingsPage() {
   async function save(e: FormEvent) {
     e.preventDefault()
     if (!adminKeyInput.trim()) {
-      toast.error('後台密碼不能為空')
+      toast.error(t('settings.admin_key_required'))
       return
     }
     if (!gatewayKey.trim()) {
-      toast.error('網關 API Key 不能為空')
+      toast.error(t('settings.gateway_key_required'))
       return
     }
     const interval = parseInt(quotaInterval, 10)
     if (isNaN(interval) || interval < 0) {
-      toast.error('刷新間隔必須是非負整數')
+      toast.error(t('settings.invalid_interval'))
       return
     }
     setSaving(true)
@@ -76,9 +78,9 @@ export function SettingsPage() {
       })
       /* 同步本機儲存的密鑰，避免改密後被登出 */
       await adminKey.set(adminKeyInput.trim())
-      toast.success('已儲存')
+      toast.success(t('common.saved'))
     } catch (err) {
-      toast.error('儲存失敗：' + errMsg(err))
+      toast.error(t('common.save_failed', { error: errMsg(err) }))
     } finally {
       setSaving(false)
     }
@@ -95,12 +97,12 @@ export function SettingsPage() {
       {/* 頁首 */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">系統設定</h1>
-          <p className="text-sm text-muted-foreground">後台鑑權、網關存取控制與訪客提交</p>
+          <h1 className="text-xl font-semibold tracking-tight">{t('settings.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('settings.subtitle')}</p>
         </div>
         <Button type="submit" form="settings-form" disabled={saving}>
           {saving ? <Loader2 className="animate-spin" /> : null}
-          儲存設定
+          {t('settings.save')}
         </Button>
       </div>
 
@@ -109,14 +111,14 @@ export function SettingsPage() {
           <TabsList className="w-full">
             <TabsTrigger value="auth" className="flex-1">
               <KeyRound className="size-3.5" />
-              鑑權
+              {t('settings.tab_auth')}
             </TabsTrigger>
             <TabsTrigger value="guest" className="flex-1">
               <UserCheck className="size-3.5" />
-              訪客提交
+              {t('settings.tab_guest')}
             </TabsTrigger>
             <TabsTrigger value="help" className="flex-1">
-              使用說明
+              {t('settings.tab_help')}
             </TabsTrigger>
           </TabsList>
 
@@ -124,12 +126,12 @@ export function SettingsPage() {
           <TabsContent value="auth">
             <Card>
               <CardContent className="flex flex-col gap-5">
-                <SectionHead title="鑑權" desc="登入後台與呼叫網關所用的密鑰" />
+                <SectionHead title={t('settings.auth_title')} desc={t('settings.auth_desc')} />
                 <FieldGrid>
                   <Field
                     id="set-admin-key"
-                    label="後台密碼"
-                    hint="用於登入此管理後台。修改後需用新密碼重新登入。"
+                    label={t('settings.admin_key_label')}
+                    hint={t('settings.admin_key_hint')}
                   >
                     <Input
                       id="set-admin-key"
@@ -140,13 +142,15 @@ export function SettingsPage() {
                   </Field>
                   <Field
                     id="set-gateway-key"
-                    label="網關 API Key"
+                    label={t('settings.gateway_key_label')}
                     hint={
                       <>
-                        一律必填（fail-closed）：呼叫{' '}
+                        {t('settings.gateway_key_hint_intro')}{' '}
                         <Code>/v1/messages</Code>、<Code>/async/v1/*</Code>、
-                        <Code>/v1/models</Code> 須攜帶 <Code>Authorization: Bearer &lt;key&gt;</Code>{' '}
-                        或 <Code>x-api-key</Code>。留空儲存會被拒絕。
+                        <Code>/v1/models</Code> {t('settings.gateway_key_hint_require')}{' '}
+                        <Code>Authorization: Bearer &lt;key&gt;</Code>{' '}
+                        {t('settings.gateway_key_hint_or')} <Code>x-api-key</Code>
+                        {t('settings.gateway_key_hint_suffix')}
                       </>
                     }
                   >
@@ -160,8 +164,8 @@ export function SettingsPage() {
                 </FieldGrid>
                 <Field
                   id="set-quota-interval"
-                  label="額度刷新間隔（秒）"
-                  hint="後台自動刷新各帳號額度與狀態的週期。設為 0 關閉自動刷新（仍可手動刷新）。修改後即時生效。"
+                  label={t('settings.quota_interval_label')}
+                  hint={t('settings.quota_interval_hint')}
                 >
                   <Input
                     id="set-quota-interval"
@@ -174,7 +178,7 @@ export function SettingsPage() {
                 </Field>
                 <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                   <Checkbox checked={showKeys} onCheckedChange={(v) => setShowKeys(v === true)} />
-                  顯示密鑰明文
+                  {t('settings.show_keys')}
                 </label>
               </CardContent>
             </Card>
@@ -184,18 +188,18 @@ export function SettingsPage() {
           <TabsContent value="guest" className="flex flex-col gap-5">
             <Card>
               <CardContent className="flex flex-col gap-5">
-                <SectionHead
-                  title="訪客提交"
-                  desc="開放 /guest 頁面，讓訪客透過 Z.AI 授權提交自己的帳號"
-                />
+                <SectionHead title={t('settings.guest_title')} desc={t('settings.guest_desc')} />
                 <Field
                   id="set-invite-code"
-                  label="訪客邀請碼"
+                  label={t('settings.invite_code_label')}
                   hint={
                     <>
-                      設定後 <Code>/guest</Code> 頁面即對外開放。
-                      <span className="font-medium text-foreground">留空即關閉訪客入口</span>
-                      ，每 IP 每日最多提交 3 次。
+                      {t('settings.invite_code_hint_intro')} <Code>/guest</Code>{' '}
+                      {t('settings.invite_code_hint_open')}
+                      <span className="font-medium text-foreground">
+                        {t('settings.invite_code_hint_closed')}
+                      </span>
+                      {t('settings.invite_code_hint_suffix')}
                     </>
                   }
                 >
@@ -203,30 +207,28 @@ export function SettingsPage() {
                     id="set-invite-code"
                     type={showKeys ? 'text' : 'password'}
                     value={inviteCode}
-                    placeholder="留空則關閉訪客提交"
+                    placeholder={t('settings.invite_code_placeholder')}
                     onChange={(e) => setInviteCode(e.target.value)}
                   />
                 </Field>
                 <p className="text-xs text-muted-foreground">
-                  訪客提交的帳號須通過一次真實請求實測才會入池；失敗的直接丟棄，不回顯任何帳號資訊。
+                  {t('settings.guest_note')}
                 </p>
               </CardContent>
             </Card>
 
             <Card>
               <CardContent className="flex flex-col gap-5">
-                <SectionHead
-                  title="人機驗證（Cap）"
-                  desc="自建 Cap 實例的 PoW 驗證，擋住自動化刷取；未配置時整段跳過"
-                />
+                <SectionHead title={t('settings.cap_title')} desc={t('settings.cap_desc')} />
                 <FieldGrid>
                   <Field
                     id="set-cap-instance"
-                    label="實例地址"
+                    label={t('settings.cap_instance_label')}
                     hint={
                       <>
-                        不含 site key，例如 <Code>https://cap.example.com</Code>。
-                        須為訪客瀏覽器可達的地址。
+                        {t('settings.cap_instance_hint_intro')}{' '}
+                        <Code>https://cap.example.com</Code>
+                        {t('settings.cap_instance_hint_suffix')}
                       </>
                     }
                   >
@@ -243,8 +245,9 @@ export function SettingsPage() {
                     label="Site Key"
                     hint={
                       <>
-                        Cap 後台建立 site key 後取得的識別碼，例如{' '}
-                        <Code>d9256640cb53</Code>。
+                        {t('settings.cap_site_key_hint_intro')}{' '}
+                        <Code>d9256640cb53</Code>
+                        {t('settings.cap_site_key_hint_suffix')}
                       </>
                     }
                   >
@@ -259,11 +262,14 @@ export function SettingsPage() {
                 </FieldGrid>
                 <Field
                   id="set-cap-secret"
-                  label="密鑰"
+                  label={t('settings.cap_secret_label')}
                   hint={
                     <>
-                      Cap 後台的 secret key（<span className="font-medium text-foreground">不是</span>
-                      管理員 ADMIN_KEY）。只留在服務端，不會下發給瀏覽器。
+                      {t('settings.cap_secret_hint_intro')}
+                      <span className="font-medium text-foreground">
+                        {t('settings.cap_secret_hint_not')}
+                      </span>
+                      {t('settings.cap_secret_hint_suffix')}
                     </>
                   }
                 >
@@ -285,20 +291,20 @@ export function SettingsPage() {
                 >
                   {capFilled === 3 ? (
                     <>
-                      已啟用，實際呼叫地址：
+                      {t('settings.cap_enabled_hint')}
                       <code className="ml-1 break-all rounded bg-muted px-1 font-mono">
                         {capEndpoint}
                       </code>
                     </>
                   ) : capFilled === 0 ? (
-                    '三項皆留空即停用人機驗證。'
+                    t('settings.cap_disabled_hint')
                   ) : (
-                    `三項須全部填寫才會啟用（目前填了 ${capFilled}/3）；只填部分無法儲存。`
+                    t('settings.cap_partial_hint', { filled: capFilled })
                   )}
                 </div>
                 <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                   <Checkbox checked={showKeys} onCheckedChange={(v) => setShowKeys(v === true)} />
-                  顯示密鑰與邀請碼明文
+                  {t('settings.show_keys_guest')}
                 </label>
               </CardContent>
             </Card>
@@ -308,13 +314,15 @@ export function SettingsPage() {
           <TabsContent value="help">
             <Card>
               <CardContent className="flex flex-col gap-3">
-                <SectionHead title="使用說明" desc="常用操作與端點" />
+                <SectionHead title={t('settings.help_title')} desc={t('settings.help_desc')} />
                 <ul className="list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-muted-foreground marker:text-muted-foreground/60">
-                  <li>在「帳號池」貼上 Coding Plan JWT 或 API Key 即可加入輪詢。</li>
-                  <li>請求按 round-robin 分發；某帳號額度用完會自動切到下一個帳號。</li>
-                  <li>帳號額度、狀態在「帳號池」頁即時刷新展示。</li>
+                  <li>{t('settings.help_item_1')}</li>
+                  <li>{t('settings.help_item_2')}</li>
+                  <li>{t('settings.help_item_3')}</li>
                   <li>
-                    對話端點：<Code>{location.origin}/v1/messages</Code>（相容 Anthropic Messages 協議）。
+                    {t('settings.help_endpoint_prefix')}
+                    <Code>{location.origin}/v1/messages</Code>
+                    {t('settings.help_endpoint_suffix')}
                   </li>
                 </ul>
               </CardContent>

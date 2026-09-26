@@ -9,6 +9,8 @@
 import { Copy, ExternalLink, Layers, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type DetailedHTMLProps, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
+import i18next from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -54,7 +56,7 @@ function loadCapWidget(): Promise<void> {
     s.onload = () => resolve()
     s.onerror = () => {
       capWidgetLoading = null
-      reject(new Error('人機驗證元件載入失敗'))
+      reject(new Error(i18next.t('guest.captcha_load_failed')))
     }
     document.head.appendChild(s)
   })
@@ -64,10 +66,11 @@ function loadCapWidget(): Promise<void> {
 /* 訪客端錯誤取出：後端統一用 FastAPI 形態的 {"detail": ...} */
 async function guestError(r: Response): Promise<string> {
   const d = (await r.json().catch(() => ({}))) as { detail?: string }
-  return d.detail || `請求失敗（${r.status}）`
+  return d.detail || i18next.t('guest.request_failed', { status: r.status })
 }
 
 export function GuestPage() {
+  const { t } = useTranslation()
   const [enabled, setEnabled] = useState<boolean | null>(null)
   const [invite, setInvite] = useState('')
   const [authorizeURL, setAuthorizeURL] = useState('')
@@ -110,7 +113,7 @@ export function GuestPage() {
     if (!capEndpoint) return
     void loadCapWidget()
       .then(() => setCapReady(true))
-      .catch(() => toast.error('人機驗證元件載入失敗，請檢查網路後重新整理'))
+      .catch(() => toast.error(t('guest.captcha_load_failed_hint')))
   }, [capEndpoint])
 
   /* 手動綁定 widget 事件。capKey 變化會重建元素，故依賴它重新綁定。 */
@@ -166,12 +169,12 @@ export function GuestPage() {
       // 换了链接，上一步贴的回调地址属于旧会话，继续留着只会让人误提交
       if (regenerate) {
         setCallbackURL('')
-        toast.success('已生成新的授權連結')
+        toast.success(t('guest.new_link_generated'))
       }
       // 不自動開窗：未經使用者點擊就跳轉到外部站台容易被當成彈窗廣告，
       // 也會在瀏覽器攔截時留下「什麼都沒發生」的困惑。改為明確的按鈕。
     } catch {
-      toast.error('連線失敗')
+      toast.error(t('guest.connection_failed'))
     } finally {
       setBusy(false)
     }
@@ -198,7 +201,7 @@ export function GuestPage() {
       }
       setDone(true)
     } catch {
-      toast.error('連線失敗')
+      toast.error(t('guest.connection_failed'))
     } finally {
       setBusy(false)
     }
@@ -211,8 +214,8 @@ export function GuestPage() {
     if (!authorizeURL) return
     navigator.clipboard
       .writeText(authorizeURL)
-      .then(() => toast.success('已複製'))
-      .catch(() => toast.error('複製失敗'))
+      .then(() => toast.success(t('common.copied')))
+      .catch(() => toast.error(t('common.copy_failed')))
   }
 
   function onStart(e: FormEvent) {
@@ -232,7 +235,7 @@ export function GuestPage() {
   if (enabled === null) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-muted/40">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="載入中" />
+        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label={t('common.loading')} />
       </div>
     )
   }
@@ -246,8 +249,8 @@ export function GuestPage() {
               <Layers className="size-5" />
             </div>
             <div className="space-y-1">
-              <h1 className="text-lg font-semibold tracking-tight">未開放</h1>
-              <p className="text-sm text-muted-foreground">站點未開啟訪客提交，請聯絡管理員</p>
+              <h1 className="text-lg font-semibold tracking-tight">{t('guest.disabled_title')}</h1>
+              <p className="text-sm text-muted-foreground">{t('guest.disabled_desc')}</p>
             </div>
           </CardContent>
         </Card>
@@ -264,9 +267,9 @@ export function GuestPage() {
               <ShieldCheck className="size-5" />
             </div>
             <div className="space-y-1">
-              <h1 className="text-lg font-semibold tracking-tight">提交成功</h1>
+              <h1 className="text-lg font-semibold tracking-tight">{t('guest.done_title')}</h1>
               <p className="text-sm text-muted-foreground">
-                帳號已通過實測並加入池中，感謝你的貢獻
+                {t('guest.done_desc')}
               </p>
             </div>
           </CardContent>
@@ -283,7 +286,7 @@ export function GuestPage() {
     ) : (
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Loader2 className="size-3.5 animate-spin" />
-        正在載入人機驗證…
+        {t('guest.captcha_loading')}
       </div>
     )
   ) : null
@@ -300,9 +303,9 @@ export function GuestPage() {
               <Layers className="size-5" />
             </div>
             <div className="space-y-1">
-              <h1 className="text-lg font-semibold tracking-tight">提交帳號</h1>
+              <h1 className="text-lg font-semibold tracking-tight">{t('guest.title')}</h1>
               <p className="text-sm text-muted-foreground">
-                透過 Z.AI 授權登入，通過實測後自動加入共享池
+                {t('guest.subtitle')}
               </p>
             </div>
           </div>
@@ -311,7 +314,7 @@ export function GuestPage() {
             <form className="flex flex-col gap-3" onSubmit={onStart}>
               <Input
                 type="password"
-                placeholder="邀請碼"
+                placeholder={t('guest.invite_placeholder')}
                 autoFocus
                 value={invite}
                 onChange={(e) => setInvite(e.target.value)}
@@ -323,16 +326,16 @@ export function GuestPage() {
                 disabled={busy || !invite.trim() || captchaBlocked}
               >
                 {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-                生成授權連結
+                {t('guest.generate_link')}
               </Button>
               <p className="text-xs text-muted-foreground">
-                授權僅用於驗證你確實持有該帳號；通過一次真實請求實測後才會入池。
+                {t('guest.authorize_note')}
               </p>
             </form>
           ) : (
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
-                <p className="text-sm font-medium">1. 開啟授權頁並完成 Z.AI 登入</p>
+                <p className="text-sm font-medium">{t('guest.step1')}</p>
                 <div className="flex items-center gap-2">
                   <Input
                     readOnly
@@ -342,11 +345,11 @@ export function GuestPage() {
                   />
                   <Button variant="outline" size="sm" onClick={copyAuthorizeURL}>
                     <Copy className="size-3.5" />
-                    複製
+                    {t('common.copy')}
                   </Button>
                   <Button asChild size="sm">
                     <a href={authorizeURL} target="_blank" rel="noopener noreferrer">
-                      開啟
+                      {t('common.open')}
                       <ExternalLink className="size-3.5" />
                     </a>
                   </Button>
@@ -365,15 +368,15 @@ export function GuestPage() {
                     ) : (
                       <RefreshCw className="size-3.5" />
                     )}
-                    重新生成
+                    {t('guest.regenerate')}
                   </Button>
                   <span className="text-xs text-muted-foreground">
-                    連結失效或想換一個時使用；不佔用今日提交次數
+                    {t('guest.regenerate_hint')}
                   </span>
                 </div>
               </div>
               <form className="flex flex-col gap-2" onSubmit={onComplete}>
-                <p className="text-sm font-medium">2. 貼上授權完成後的頁面地址</p>
+                <p className="text-sm font-medium">{t('guest.step2')}</p>
                 <Input
                   placeholder="https://zcode.z.ai/app/oauth/login?code=..."
                   value={callbackURL}
@@ -386,11 +389,11 @@ export function GuestPage() {
                   disabled={busy || !callbackURL.trim() || captchaBlocked}
                 >
                   {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-                  提交並實測
+                  {t('guest.submit_test')}
                 </Button>
               </form>
               <p className="text-xs text-muted-foreground">
-                實測會發起一次最小的真實請求；失敗的帳號不會入池。
+                {t('guest.test_note')}
               </p>
             </div>
           )}

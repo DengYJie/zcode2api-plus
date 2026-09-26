@@ -2,11 +2,13 @@
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { adminKey } from '@/lib/admin-key'
 import { verifyKey } from '@/lib/api'
 
 export function AuthGuard({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'checking' | 'ok' | 'deny'>('checking')
+  const { t } = useTranslation()
 
   useEffect(() => {
     let alive = true
@@ -27,7 +29,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   if (state === 'checking') {
     return (
       <div className="flex min-h-svh items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="驗證中" />
+        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label={t('app.verifying')} />
       </div>
     )
   }

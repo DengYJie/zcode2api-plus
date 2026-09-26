@@ -1,8 +1,10 @@
 /* 驗證中心頁：載入阿里雲驗證 SDK，於真實瀏覽器完成無痕驗證並提交結果供 JWT 請求複用 */
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import i18n from '@/i18n'
 import { api, errMsg } from '@/lib/api'
 import type { CaptchaConfig } from '@/lib/types'
 
@@ -42,7 +44,7 @@ function loadSdk(): Promise<void> {
     s.src = SDK_URL
     s.async = true
     s.onload = () => resolve()
-    s.onerror = () => reject(new Error('阿里雲驗證 SDK 載入失敗，請檢查網路後重新整理頁面。'))
+    s.onerror = () => reject(new Error(i18n.t('captcha.sdk_load_failed')))
     document.head.appendChild(s)
   })
 }
@@ -53,7 +55,8 @@ function errText(err: { message?: string } | unknown): string {
 }
 
 export function CaptchaPage() {
-  const [status, setStatus] = useState('正在載入驗證配置…')
+  const { t } = useTranslation()
+  const [status, setStatus] = useState(t('captcha.loading_config'))
   const [hint, setHint] = useState('')
   const [started, setStarted] = useState(false)
   const cfgRef = useRef<CaptchaConfig | null>(null)
@@ -73,10 +76,16 @@ export function CaptchaPage() {
         const cfg = await api<CaptchaConfig>('GET', '/captcha/config')
         cfgRef.current = cfg
         if (!alive) return
-        setStatus(`驗證配置：scene=${cfg.sceneId || '-'} · region=${cfg.region || '-'} · ${cfg.enabled ? '已啟用' : '未啟用'}`)
-        setHint('點擊「開始驗證」，將在真實瀏覽器中完成驗證；如果出現滑塊，請在彈窗中手動完成。')
+        setStatus(
+          t('captcha.config_status', {
+            scene: cfg.sceneId || '-',
+            region: cfg.region || '-',
+            enabled: cfg.enabled ? t('captcha.enabled') : t('captcha.disabled'),
+          }),
+        )
+        setHint(t('captcha.hint_ready'))
       } catch (e) {
-        if (alive) setStatus('載入驗證配置失敗：' + errMsg(e))
+        if (alive) setStatus(t('captcha.load_failed', { error: errMsg(e) }))
       }
     })()
     return () => {
@@ -95,7 +104,7 @@ export function CaptchaPage() {
     startedRef.current = true
     attemptsRef.current = 0
     setStarted(true)
-    setHint('無痕驗證進行中：通常數秒內自動完成，期間不會出現彈窗；僅當風控要求二次驗證時才會彈出滑塊，請在彈窗中手動完成。')
+    setHint(t('captcha.hint_running'))
     window.initAliyunCaptcha({
       SceneId: cfg.sceneId,
       mode: 'popup',
@@ -109,8 +118,8 @@ export function CaptchaPage() {
         /* SDK 驗證失敗後會銷毀重建實例，並以 undefined 回呼本函數，必須防護 */
         if (!inst) return
         if (attemptsRef.current >= 3) {
-          toast.error('多次重試仍未通過，請稍後再點「開始驗證」')
-          setHint('驗證多次未通過。可稍後重試；若持續失敗，請檢查網路或更換出口 IP。')
+          toast.error(t('captcha.too_many_attempts'))
+          setHint(t('captcha.hint_attempts_exhausted'))
           reset()
           return
         }
@@ -119,28 +128,28 @@ export function CaptchaPage() {
           const method = inst.startTracelessVerification ?? inst.show
           method?.call(inst)
         } catch (e) {
-          toast.error('啟動驗證失敗：' + errMsg(e))
+          toast.error(t('captcha.start_failed', { error: errMsg(e) }))
           reset()
         }
       },
       success: async (param) => {
         try {
           await api('POST', '/captcha/submit', { verify_param: param })
-          toast.success('驗證結果已提交，約 45 秒內供 JWT 請求使用')
-          setHint('已提交。驗證碼是短期結果，過期後請重新完成驗證。')
+          toast.success(t('captcha.submitted'))
+          setHint(t('captcha.hint_submitted'))
         } catch (e) {
-          toast.error('提交失敗：' + errMsg(e))
-          setHint('驗證已通過但提交失敗，請重新點擊「開始驗證」。')
+          toast.error(t('captcha.submit_failed', { error: errMsg(e) }))
+          setHint(t('captcha.hint_submit_failed'))
         }
         reset()
       },
       fail: (err) => {
-        toast.error('驗證失敗：' + errText(err))
-        setHint('驗證未通過，SDK 會自動重試；若長時間無結果，可再次點擊「開始驗證」。')
+        toast.error(t('captcha.verify_failed', { error: errText(err) }))
+        setHint(t('captcha.hint_verify_failed'))
         reset()
       },
       onError: (err) => {
-        toast.error('驗證初始化失敗：' + errText(err))
+        toast.error(t('captcha.init_failed', { error: errText(err) }))
         reset()
       },
     })
@@ -150,9 +159,9 @@ export function CaptchaPage() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
       {/* 頁首 */}
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">人機驗證</h1>
+        <h1 className="text-xl font-semibold tracking-tight">{t('captcha.title')}</h1>
         <p className="text-sm text-muted-foreground">
-          自動求解被風控攔截時，在真實瀏覽器手動完成阿里雲無痕驗證，結果供 JWT 帳號請求複用
+          {t('captcha.subtitle')}
         </p>
       </div>
 
@@ -161,7 +170,7 @@ export function CaptchaPage() {
           <p className="text-xs text-muted-foreground">{status}</p>
           <div id="cap" />
           <Button id="btn" className="h-10 w-full" disabled={started} onClick={start}>
-            開始驗證
+            {t('captcha.start')}
           </Button>
           {hint ? <p className="text-xs leading-relaxed text-muted-foreground">{hint}</p> : null}
         </CardContent>

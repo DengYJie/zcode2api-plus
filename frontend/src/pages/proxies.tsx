@@ -3,6 +3,7 @@ import { Activity, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { useConfirm } from '@/components/confirm'
 import { Empty, PanelCard } from '@/components/panel'
 import { Button } from '@/components/ui/button'
@@ -50,6 +51,7 @@ function countryLabel(d: EgressInfo): string {
 }
 
 export function ProxiesPage() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const { confirm, element: confirmElement } = useConfirm()
 
@@ -82,7 +84,7 @@ export function ProxiesPage() {
 
   async function save() {
     if (!url.trim()) {
-      toast.error('請輸入代理地址')
+      toast.error(t('proxies.url_required'))
       return
     }
     setSaving(true)
@@ -93,10 +95,10 @@ export function ProxiesPage() {
         enabled: true,
       })
       setModalOpen(false)
-      toast.success(editingId ? '代理已更新' : '代理已建立')
+      toast.success(editingId ? t('proxies.updated') : t('proxies.created'))
       invalidate()
     } catch (e) {
-      toast.error('儲存失敗：' + errMsg(e))
+      toast.error(t('proxies.save_failed', { msg: errMsg(e) }))
     } finally {
       setSaving(false)
     }
@@ -104,34 +106,35 @@ export function ProxiesPage() {
 
   function deleteProxy(p: ProxyProfile) {
     confirm({
-      title: '刪除代理',
+      title: t('proxies.delete_title'),
       danger: true,
       description: (
         <>
-          確認刪除 <code className="rounded bg-muted px-1 py-0.5">{p.name}</code>？使用此線路的帳號將切換為直連。
+          {t('proxies.delete_desc_before')} <code className="rounded bg-muted px-1 py-0.5">{p.name}</code>
+          {t('proxies.delete_desc_after')}
         </>
       ),
       onConfirm: async () => {
         try {
           await api('DELETE', '/proxies/' + encodeURIComponent(p.id))
-          toast.success('代理已刪除')
+          toast.success(t('proxies.deleted'))
           invalidate()
         } catch (e) {
-          toast.error('刪除失敗：' + errMsg(e))
+          toast.error(t('proxies.delete_failed', { msg: errMsg(e) }))
         }
       },
     })
   }
 
   async function testProxy(p: ProxyProfile) {
-    setRowResults((m) => ({ ...m, [p.id]: { state: 'testing', text: '正在測試線路…' } }))
+    setRowResults((m) => ({ ...m, [p.id]: { state: 'testing', text: t('proxies.testing_row') } }))
     try {
       const d = await api<EgressInfo>('POST', '/proxies/' + encodeURIComponent(p.id) + '/test')
       setRowResults((m) => ({ ...m, [p.id]: { state: 'ok', text: formatProbe(d) } }))
-      toast.success('代理線路正常')
+      toast.success(t('proxies.test_ok'))
     } catch (e) {
       setRowResults((m) => ({ ...m, [p.id]: { state: 'error', text: errMsg(e) } }))
-      toast.error('代理測試失敗：' + errMsg(e))
+      toast.error(t('proxies.test_failed', { msg: errMsg(e) }))
     }
   }
 
@@ -143,14 +146,14 @@ export function ProxiesPage() {
       setCurrent({
         state: 'ok',
         main: [d.ip, d.asn, d.operator].filter(Boolean).join(' · '),
-        sub: [countryLabel(d), d.latency_ms != null ? d.latency_ms + ' ms' : '', d.source ? '來源 ' + d.source : '']
+        sub: [countryLabel(d), d.latency_ms != null ? d.latency_ms + ' ms' : '', d.source ? t('proxies.source', { source: d.source }) : '']
           .filter(Boolean)
           .join(' · '),
       })
-      toast.success('目前線路查詢完成')
+      toast.success(t('proxies.current_test_ok'))
     } catch (e) {
       setCurrent({ state: 'error', text: errMsg(e) })
-      toast.error('目前線路測試失敗：' + errMsg(e))
+      toast.error(t('proxies.current_test_failed', { msg: errMsg(e) }))
     } finally {
       setTestingCurrent(false)
     }
@@ -161,15 +164,15 @@ export function ProxiesPage() {
       {/* 頁首 */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">代理設定</h1>
-          <p className="text-sm text-muted-foreground">集中管理 HTTP／SOCKS5 出口線路</p>
+          <h1 className="text-xl font-semibold tracking-tight">{t('proxies.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('proxies.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => void testCurrentLine()} disabled={testingCurrent}>
-            <Activity /> 測試目前線路
+            <Activity /> {t('proxies.test_current')}
           </Button>
           <Button size="sm" onClick={() => openModal()}>
-            <Plus /> 新增代理
+            <Plus /> {t('proxies.add')}
           </Button>
         </div>
       </div>
@@ -195,31 +198,31 @@ export function ProxiesPage() {
           }
         />
         <div className="min-w-0 flex-1 leading-tight">
-          <span className="block text-xs text-muted-foreground">伺服器目前出口</span>
+          <span className="block text-xs text-muted-foreground">{t('proxies.current_egress')}</span>
           <strong className="block truncate text-sm">
             {current.state === 'ok'
               ? current.main
               : current.state === 'testing'
-                ? '正在查詢出口…'
+                ? t('proxies.querying')
                 : current.state === 'error'
-                  ? '出口查詢失敗'
-                  : '尚未測試'}
+                  ? t('proxies.query_failed')
+                  : t('proxies.not_tested')}
           </strong>
           <small className="block truncate text-xs text-muted-foreground">
             {current.state === 'ok'
               ? current.sub
               : current.state === 'testing'
-                ? '正在連線至 IP 查詢服務'
+                ? t('proxies.querying_ip')
                 : current.state === 'error'
                   ? current.text
-                  : '透過 ip.sb 等服務查詢公網 IP 與 ASN'}
+                  : t('proxies.query_hint')}
           </small>
         </div>
       </div>
 
       {/* 線路清單＋連線格式說明 */}
       <div className="grid gap-4 lg:grid-cols-5">
-        <PanelCard title="代理線路" subtitle="建立後可在帳號設定中選用" badge={`${profiles.length} 條線路`} className="lg:col-span-3">
+        <PanelCard title={t('proxies.list_title')} subtitle={t('proxies.list_subtitle')} badge={t('proxies.profile_count', { n: profiles.length })} className="lg:col-span-3">
           {profiles.length ? (
             <div className="flex flex-col divide-y">
               {profiles.map((p) => {
@@ -255,20 +258,20 @@ export function ProxiesPage() {
                       }
                     >
                       <span className={'size-1.5 rounded-full ' + (p.enabled ? 'bg-emerald-500' : 'bg-muted-foreground/50')} />
-                      {p.enabled ? '啟用' : '停用'}
+                      {p.enabled ? t('proxies.state_enabled') : t('proxies.state_disabled')}
                     </span>
                     <span className="flex gap-0.5">
-                      <Button variant="ghost" size="icon-sm" title="測試線路" onClick={() => void testProxy(p)}>
+                      <Button variant="ghost" size="icon-sm" title={t('proxies.test_line')} onClick={() => void testProxy(p)}>
                         <Activity />
                       </Button>
-                      <Button variant="ghost" size="icon-sm" title="編輯" onClick={() => openModal(p)}>
+                      <Button variant="ghost" size="icon-sm" title={t('common.edit')} onClick={() => openModal(p)}>
                         <Pencil />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"
                         className="text-destructive hover:text-destructive"
-                        title="刪除"
+                        title={t('common.delete')}
                         onClick={() => deleteProxy(p)}
                       >
                         <Trash2 />
@@ -279,11 +282,11 @@ export function ProxiesPage() {
               })}
             </div>
           ) : (
-            <Empty>尚未建立代理線路</Empty>
+            <Empty>{t('proxies.empty')}</Empty>
           )}
         </PanelCard>
 
-        <PanelCard title="連線格式" subtitle="支援帶認證的代理" className="lg:col-span-2">
+        <PanelCard title={t('proxies.format_title')} subtitle={t('proxies.format_subtitle')} className="lg:col-span-2">
           <div className="flex flex-col gap-3">
             {(
               [
@@ -298,7 +301,7 @@ export function ProxiesPage() {
               </div>
             ))}
             <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-              僅接受 HTTP、HTTPS、SOCKS4、SOCKS5 代理地址，可包含 user:pass 認證。帳號是否使用代理、使用哪條線路，請在「帳號池」的帳號設定中選擇。
+              {t('proxies.format_note')}
             </p>
           </div>
         </PanelCard>
@@ -308,29 +311,29 @@ export function ProxiesPage() {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingId ? '編輯代理出口' : '新增代理出口'}</DialogTitle>
-            <DialogDescription>支援帶認證的 HTTP／SOCKS5 地址。</DialogDescription>
+            <DialogTitle>{editingId ? t('proxies.edit_modal_title') : t('proxies.add_modal_title')}</DialogTitle>
+            <DialogDescription>{t('proxies.modal_desc')}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="proxy-name">名稱</Label>
-              <Input id="proxy-name" placeholder="例如：香港出口 1" value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="proxy-name">{t('proxies.name_label')}</Label>
+              <Input id="proxy-name" placeholder={t('proxies.name_placeholder')} value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="proxy-url">地址</Label>
+              <Label htmlFor="proxy-url">{t('proxies.url_label')}</Label>
               <Input
                 id="proxy-url"
-                placeholder="http://host:port 或 socks5://host:port"
+                placeholder={t('proxies.url_placeholder')}
                 autoComplete="off"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
               />
             </div>
-            <p className="text-xs text-muted-foreground">僅接受 HTTP、HTTPS、SOCKS4、SOCKS5 代理地址，可包含 user:pass 認證。</p>
+            <p className="text-xs text-muted-foreground">{t('proxies.accept_note')}</p>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>取消</Button>
-            <Button disabled={saving} onClick={() => void save()}>儲存</Button>
+            <Button variant="outline" onClick={() => setModalOpen(false)}>{t('common.cancel')}</Button>
+            <Button disabled={saving} onClick={() => void save()}>{t('common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

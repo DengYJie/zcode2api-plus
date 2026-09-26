@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
 import { Toaster } from '@/components/ui/sonner'
+import '@/i18n'
 import './index.css'
 
 /* 全域 Query 設定：不重試、視窗聚焦不重抓（輪詢交給各頁 refetchInterval） */

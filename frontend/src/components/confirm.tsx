@@ -1,5 +1,6 @@
 /* 確認對話框封裝：以 hook 提供 confirm(options)，取代舊版 openConfirm */
 import { useCallback, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +23,7 @@ export interface ConfirmOptions {
 }
 
 export function useConfirm() {
+  const { t } = useTranslation()
   const [options, setOptions] = useState<ConfirmOptions | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -53,7 +55,7 @@ export function useConfirm() {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+          <AlertDialogCancel disabled={busy}>{t('common.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             className={options?.danger ? 'bg-destructive text-white hover:bg-destructive/90' : undefined}
             disabled={busy}
@@ -62,7 +64,7 @@ export function useConfirm() {
               void run()
             }}
           >
-            {options?.confirmText ?? '確認'}
+            {options?.confirmText ?? t('common.confirm')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

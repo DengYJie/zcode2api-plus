@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Empty, MetricCard, PanelCard } from '@/components/panel'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -18,7 +19,6 @@ import { api } from '@/lib/api'
 import { fmt, fmtCompact, relativeTime } from '@/lib/format'
 import {
   STATUS_COLOR,
-  STATUS_LABEL_LONG,
   type Account,
   type AccountsResponse,
   type StatusResponse,
@@ -26,6 +26,7 @@ import {
 } from '@/lib/types'
 
 export function DashboardPage() {
+  const { t } = useTranslation()
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: async () => {
@@ -70,33 +71,33 @@ export function DashboardPage() {
       {/* 頁首 */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">儀表板</h1>
-          <p className="text-sm text-muted-foreground">帳號池與網關的即時運行概況</p>
+          <h1 className="text-xl font-semibold tracking-tight">{t('dashboard.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('dashboard.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="mr-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
-            即時資料
+            {t('dashboard.live')}
           </span>
           <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
-            <RefreshCw className={isFetching ? 'animate-spin' : undefined} /> 重新整理
+            <RefreshCw className={isFetching ? 'animate-spin' : undefined} /> {t('common.refresh')}
           </Button>
         </div>
       </div>
 
       {/* 網關指標卡 */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricCard icon={<Users />} tone="text-blue-600" label="帳號總數" value={fmt(stats?.total)} detail={`${fmt(stats?.active)} 個正常`} />
-        <MetricCard icon={<Boxes />} tone="text-emerald-600" label="可用帳號池" value={fmt(pool)} detail={`${providers.length} 個提供商`} />
-        <MetricCard icon={<Zap />} tone="text-violet-600" label="累計呼叫" value={fmt(calls)} detail={`${fmt(failed)} 次失敗`} />
-        <MetricCard icon={<CircleCheck />} tone="text-amber-600" label="請求成功率" value={successRate} detail="按累計呼叫計算" />
-        <MetricCard icon={<Database />} tone="text-cyan-600" label="累計 Token" value={fmtCompact(tokens)} detail={`輸入 ${fmtCompact(input)} · 輸出 ${fmtCompact(output)}`} />
-        <MetricCard icon={<TrendingUp />} tone="text-rose-600" label="剩餘額度" value={fmtCompact(remaining)} detail={`${items} 個額度項目`} />
+        <MetricCard icon={<Users />} tone="text-blue-600" label={t('dashboard.total_accounts')} value={fmt(stats?.total)} detail={t('dashboard.active_count', { n: fmt(stats?.active) })} />
+        <MetricCard icon={<Boxes />} tone="text-emerald-600" label={t('dashboard.pool_accounts')} value={fmt(pool)} detail={t('dashboard.provider_count', { n: providers.length })} />
+        <MetricCard icon={<Zap />} tone="text-violet-600" label={t('dashboard.total_calls')} value={fmt(calls)} detail={t('dashboard.failed_count', { n: fmt(failed) })} />
+        <MetricCard icon={<CircleCheck />} tone="text-amber-600" label={t('dashboard.success_rate')} value={successRate} detail={t('dashboard.success_rate_detail')} />
+        <MetricCard icon={<Database />} tone="text-cyan-600" label={t('dashboard.total_tokens')} value={fmtCompact(tokens)} detail={t('dashboard.tokens_detail', { input: fmtCompact(input), output: fmtCompact(output) })} />
+        <MetricCard icon={<TrendingUp />} tone="text-rose-600" label={t('dashboard.remaining_quota')} value={fmtCompact(remaining)} detail={t('dashboard.quota_item_count', { n: items })} />
       </div>
 
       {/* 提供商概況＋帳號健康 */}
       <div className="grid gap-4 lg:grid-cols-5">
-        <PanelCard title="提供商概況" subtitle="帳號、請求與 Token 分布" badge={`${providers.length} 個提供商`} className="lg:col-span-3">
+        <PanelCard title={t('dashboard.providers_title')} subtitle={t('dashboard.providers_subtitle')} badge={t('dashboard.provider_count', { n: providers.length })} className="lg:col-span-3">
           {providers.length ? (
             <div className="flex flex-col divide-y">
               {providers.map((provider) => {
@@ -112,16 +113,16 @@ export function DashboardPage() {
                       </span>
                       <span className="leading-tight">
                         <strong className="block text-sm">{provider}</strong>
-                        <small className="text-xs text-muted-foreground">{available} 個可用</small>
+                        <small className="text-xs text-muted-foreground">{t('dashboard.available_count', { n: available })}</small>
                       </span>
                     </div>
-                    <MetaStat label="帳號" value={fmt(items2.length)} />
-                    <MetaStat label="呼叫" value={fmt(callsP)} />
+                    <MetaStat label={t('dashboard.col_account')} value={fmt(items2.length)} />
+                    <MetaStat label={t('dashboard.col_calls')} value={fmt(callsP)} />
                     <MetaStat label="Token" value={fmtCompact(tokensP)} />
                     <span className="min-w-20 text-right text-sm">
-                      <span className="block text-xs text-muted-foreground">狀態</span>
+                      <span className="block text-xs text-muted-foreground">{t('dashboard.status')}</span>
                       <strong className={available ? 'text-emerald-600' : 'text-muted-foreground'}>
-                        {available ? '可用' : '無可用帳號'}
+                        {available ? t('dashboard.available') : t('dashboard.no_available_accounts')}
                       </strong>
                     </span>
                   </div>
@@ -129,25 +130,25 @@ export function DashboardPage() {
               })}
             </div>
           ) : (
-            <Empty>尚無提供商資料</Empty>
+            <Empty>{t('dashboard.no_providers')}</Empty>
           )}
         </PanelCard>
 
-        <PanelCard title="帳號健康" subtitle="目前帳號狀態分布" className="lg:col-span-2">
+        <PanelCard title={t('dashboard.health_title')} subtitle={t('dashboard.health_subtitle')} className="lg:col-span-2">
           <HealthDonut stats={stats} />
         </PanelCard>
       </div>
 
       {/* Token 組成＋最近活動 */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <PanelCard title="Token 組成" subtitle="累計用量分布" badge={fmtCompact(tokens)}>
+        <PanelCard title={t('dashboard.tokens_title')} subtitle={t('dashboard.tokens_subtitle')} badge={fmtCompact(tokens)}>
           {tokens ? (
             <div className="flex flex-col gap-4">
               {(
                 [
-                  ['輸入', input, '#3b82f6'],
-                  ['輸出', output, '#10b981'],
-                  ['快取', cache, '#8b5cf6'],
+                  [t('dashboard.tokens_input'), input, '#3b82f6'],
+                  [t('dashboard.tokens_output'), output, '#10b981'],
+                  [t('dashboard.tokens_cache'), cache, '#8b5cf6'],
                 ] as [string, number, string][]
               ).map(([label, value, color]) => {
                 const pct = tokens ? (value / tokens) * 100 : 0
@@ -169,16 +170,16 @@ export function DashboardPage() {
               })}
             </div>
           ) : (
-            <Empty>尚無用量資料</Empty>
+            <Empty>{t('dashboard.no_usage')}</Empty>
           )}
         </PanelCard>
 
         <PanelCard
-          title="最近活動"
-          subtitle="依最後使用時間排序"
+          title={t('dashboard.recent_title')}
+          subtitle={t('dashboard.recent_subtitle')}
           badge={
             <Link to="/admin/accounts" className="text-xs font-normal text-muted-foreground underline-offset-4 hover:underline">
-              查看全部
+              {t('dashboard.view_all')}
             </Link>
           }
         >
@@ -202,7 +203,7 @@ export function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <Empty>尚無帳號活動</Empty>
+              <Empty>{t('dashboard.no_activity')}</Empty>
             )
           })()}
         </PanelCard>
@@ -210,21 +211,21 @@ export function DashboardPage() {
 
       {/* 帳號調度分布＋用量排行（原用量分析頁內容） */}
       <div className="grid gap-4 lg:grid-cols-5">
-        <PanelCard title="帳號調度分布" subtitle="依請求數排序" className="lg:col-span-2">
+        <PanelCard title={t('dashboard.dispatch_title')} subtitle={t('dashboard.dispatch_subtitle')} className="lg:col-span-2">
           <Donut ranking={usage?.ranking ?? []} calls={usageCalls} />
         </PanelCard>
 
-        <PanelCard title="帳號用量排行" subtitle="目前服務程序啟動後的累計調度" badge={fmt(usageCalls)} className="lg:col-span-3">
+        <PanelCard title={t('dashboard.ranking_title')} subtitle={t('dashboard.ranking_subtitle')} badge={fmt(usageCalls)} className="lg:col-span-3">
           <Card className="overflow-x-auto py-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>帳號</TableHead>
-                  <TableHead>提供商</TableHead>
-                  <TableHead className="text-right">請求</TableHead>
-                  <TableHead className="text-right">失敗</TableHead>
+                  <TableHead>{t('dashboard.col_account')}</TableHead>
+                  <TableHead>{t('dashboard.col_provider')}</TableHead>
+                  <TableHead className="text-right">{t('dashboard.col_requests')}</TableHead>
+                  <TableHead className="text-right">{t('dashboard.col_failures')}</TableHead>
                   <TableHead className="text-right">Token</TableHead>
-                  <TableHead className="w-40">佔比</TableHead>
+                  <TableHead className="w-40">{t('dashboard.col_share')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -254,7 +255,7 @@ export function DashboardPage() {
                 ) : (
                   <TableRow>
                     <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
-                      尚無帳號用量資料
+                      {t('dashboard.no_account_usage')}
                     </TableCell>
                   </TableRow>
                 )}
@@ -266,8 +267,8 @@ export function DashboardPage() {
 
       {/* 網關資訊 */}
       <PanelCard
-        title="網關資訊"
-        subtitle="目前服務端點與運行設定"
+        title={t('dashboard.gateway_title')}
+        subtitle={t('dashboard.gateway_subtitle')}
         badge={
           <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
             <span className="size-1.5 rounded-full bg-emerald-500" />
@@ -281,10 +282,10 @@ export function DashboardPage() {
             <code className="truncate rounded-md bg-muted px-2.5 py-1.5 font-mono text-xs">{location.origin}/v1/messages</code>
           </div>
           <div className="grid grid-cols-3 gap-3 text-sm">
-            <GatewayMeta label="API 鑑權" value={status?.gateway_key_set ? '已啟用' : '未啟用'} />
-            <GatewayMeta label="額度更新" value={status?.quota_refresh_interval ? `${status.quota_refresh_interval} 秒` : '手動'} />
+            <GatewayMeta label={t('dashboard.gateway_auth')} value={status?.gateway_key_set ? t('dashboard.enabled') : t('dashboard.not_enabled')} />
+            <GatewayMeta label={t('dashboard.quota_refresh_label')} value={status?.quota_refresh_interval ? t('time.seconds', { n: status.quota_refresh_interval }) : t('dashboard.manual')} />
             <GatewayMeta
-              label="資料更新"
+              label={t('dashboard.data_updated_label')}
               value={data ? new Date(data.accountsData.ts * 1000).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--'}
             />
           </div>
@@ -296,6 +297,7 @@ export function DashboardPage() {
 
 /* 帳號健康圓環：conic-gradient 依各狀態占比上色 */
 function HealthDonut({ stats }: { stats?: AccountsResponse['stats'] }) {
+  const { t } = useTranslation()
   const keys = ['active', 'exhausted', 'cooling', 'invalid', 'disabled'] as const
   const values = keys.map((k) => Number(stats?.[k]) || 0)
   const total = values.reduce((a, b) => a + b, 0)
@@ -314,7 +316,7 @@ function HealthDonut({ stats }: { stats?: AccountsResponse['stats'] }) {
       >
         <div className="flex size-[86px] flex-col items-center justify-center rounded-full bg-card">
           <strong className="text-xl tabular-nums">{fmt(total)}</strong>
-          <span className="text-xs text-muted-foreground">帳號</span>
+          <span className="text-xs text-muted-foreground">{t('dashboard.col_account')}</span>
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-2 text-sm">
@@ -325,12 +327,12 @@ function HealthDonut({ stats }: { stats?: AccountsResponse['stats'] }) {
             .map((x) => (
               <div key={x.key} className="flex items-center gap-2">
                 <span className="size-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[x.key] }} />
-                <span className="flex-1 text-muted-foreground">{STATUS_LABEL_LONG[x.key]}</span>
+                <span className="flex-1 text-muted-foreground">{t('status_long.' + x.key)}</span>
                 <strong className="tabular-nums">{x.value}</strong>
               </div>
             ))
         ) : (
-          <Empty>尚無帳號資料</Empty>
+          <Empty>{t('dashboard.no_accounts')}</Empty>
         )}
       </div>
     </div>
@@ -347,6 +349,7 @@ const PALETTE = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#94a3b8']
 
 /* 調度分布圓環：前五名帳號請求占比 */
 function Donut({ ranking, calls }: { ranking: UsageResponse['ranking']; calls: number }) {
+  const { t } = useTranslation()
   const top = ranking.slice(0, 5)
   let cursor = 0
   const stops = top.map((r, i) => {
@@ -364,7 +367,7 @@ function Donut({ ranking, calls }: { ranking: UsageResponse['ranking']; calls: n
       >
         <div className="flex size-[86px] flex-col items-center justify-center rounded-full bg-card">
           <strong className="text-xl tabular-nums">{fmt(calls)}</strong>
-          <span className="text-xs text-muted-foreground">請求</span>
+          <span className="text-xs text-muted-foreground">{t('dashboard.col_requests')}</span>
         </div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-2 text-sm">
@@ -377,7 +380,7 @@ function Donut({ ranking, calls }: { ranking: UsageResponse['ranking']; calls: n
             </div>
           ))
         ) : (
-          <Empty>尚無用量資料</Empty>
+          <Empty>{t('dashboard.no_usage')}</Empty>
         )}
       </div>
     </div>
