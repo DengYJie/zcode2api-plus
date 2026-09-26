@@ -87,6 +87,13 @@ var playwrightDisabledFeatures = []string{
 // remote-debugging-port 与 playwright 的 -pipe 是连接方式差异，无指纹影响。
 func newLauncher(bin string) *launcher.Launcher {
 	l := launcher.New().Bin(bin).Headless(true)
+	// Windows 上禁用 leakless 守护进程：它每次启动都解压 leakless.exe 到
+	// %TEMP%，会被 Windows Defender 当作 PUP 拦截（fork/exec 直接失败），
+	// 浏览器池因此永远进冷却。禁用后由 closeLauncher 自行杀进程，代价仅是
+	// Go 进程被强杀时可能残留 headless chrome（网关退出路径已有优雅收尾）。
+	if runtime.GOOS == "windows" {
+		l = l.Leakless(false)
+	}
 	l = l.Delete("enable-automation").Delete("disable-site-isolation-trials").Delete("enable-features")
 
 	// playwright chromiumSwitches 有效集（rod 默认缺失的部分）
