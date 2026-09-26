@@ -139,9 +139,9 @@ func (e *Engine) RunMessages(ctx context.Context, body map[string]any, incomingH
 	}
 
 	if modelName != "" {
-		web.ReqErr(reqID, fmt.Sprintf("模型 %s 無可用帳號（未提供此模型或額度已用完）", modelName))
+		web.ReqErr(reqID, fmt.Sprintf("模型 %s 无可用账号（未提供此模型或额度已用完）", modelName))
 		return errResult(http.StatusServiceUnavailable, "no_available_account",
-			fmt.Sprintf("模型 %s 目前無可用帳號（帳號未提供此模型或額度已用完），請在後台檢查帳號狀態", modelName))
+			fmt.Sprintf("模型 %s 目前无可用账号（账号未提供此模型或额度已用完），请在后台检查账号状态", modelName))
 	}
 	web.ReqErr(reqID, "无可用账号 / 额度均已耗尽")
 	return errResult(http.StatusServiceUnavailable, "no_available_account",
@@ -493,13 +493,14 @@ func (e *Engine) handleUpstreamJSON(
 		Header:      http.Header{},
 		Body:        bytes.NewReader(buffered),
 	})
-	return e.finishDelivery(reqID, acc, usage, err)
+	return e.finishDelivery(reqID, acc, usage, err, 0)
 }
 
 // deliverStream 交付 SSE 流式响应；usage 随读取同步收集，客户端完整接收后计入。
 func (e *Engine) deliverStream(reqID string, acc *model.Account, contentType string, resp *http.Response, deliver DeliverFunc) attemptResult {
 	e.success(acc)
 	usage := NewUsageCollector(strings.Contains(contentType, "text/event-stream"))
+	deliverStart := time.Now()
 	err := deliver(Delivery{
 		StatusCode:  resp.StatusCode,
 		ContentType: contentType,
@@ -507,13 +508,15 @@ func (e *Engine) deliverStream(reqID string, acc *model.Account, contentType str
 		Body:        &teeReader{r: resp.Body, c: usage},
 	})
 	_ = resp.Body.Close()
-	return e.finishDelivery(reqID, acc, usage, err)
+	return e.finishDelivery(reqID, acc, usage, err, time.Since(deliverStart))
 }
 
 // finishDelivery 交付收尾：完整交付 → 累计 usage；客户端中断 → 只记日志不累计。
-func (e *Engine) finishDelivery(reqID string, acc *model.Account, usage *UsageCollector, err error) attemptResult {
+// elapsed 是从开始向上游读流到交付结束的总时长：中断定位时用它区分
+// 「长静默后被客户端看门狗掐断」与「刚开始就被取消」。
+func (e *Engine) finishDelivery(reqID string, acc *model.Account, usage *UsageCollector, err error, elapsed time.Duration) attemptResult {
 	if err != nil {
-		web.ReqErr(reqID, fmt.Sprintf("流传输中断: %v", err))
+		web.ReqErr(reqID, fmt.Sprintf("流传输中断: %v（流已持续 %d 秒）", err, int(elapsed.Seconds())))
 		return attemptResult{final: runResult{Delivered: true}}
 	}
 	usage.Finish()

@@ -293,7 +293,8 @@ func TestStreamIncludeUsageAppendsChunk(t *testing.T) {
 }
 
 func TestStreamPingAndUnknownDropped(t *testing.T) {
-	// ping 与 thinking_delta 丢弃，不产生 chunk
+	// ping 丢弃；thinking_delta 转发为 reasoning_content（思考期保持流活跃，
+	// 否则 OpenAI 客户端的流式看门狗会在静默期掐断连接）
 	feed := `event: message_start
 data: {"type":"message_start","message":{"id":"m","model":"GLM-5.3","usage":{}}}
 
@@ -310,15 +311,26 @@ event: message_stop
 data: {"type":"message_stop"}
 
 `
-	var n int
-	if err := reencodeSSE(strings.NewReader(feed), false, func(string) error {
-		n++
+	var chunks []string
+	if err := reencodeSSE(strings.NewReader(feed), false, func(s string) error {
+		chunks = append(chunks, s)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if n != 3 { // 首 chunk + finish chunk + [DONE]
-		t.Fatalf("ping/thinking 应丢弃，实际 chunk 数 %d", n)
+	if len(chunks) != 4 { // 首 chunk + reasoning chunk + finish chunk + [DONE]
+		t.Fatalf("chunk 数不符（ping 应丢弃、thinking 应转发）: %d", len(chunks))
+	}
+	var payload struct {
+		Choices []struct {
+			Delta map[string]any `json:"delta"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(chunks[1], "data: ")), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Choices[0].Delta["reasoning_content"] != "嗯" {
+		t.Fatalf("thinking 应转发为 reasoning_content: %v", payload.Choices[0].Delta)
 	}
 }
 
