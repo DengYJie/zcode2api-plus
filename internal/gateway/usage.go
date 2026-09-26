@@ -74,9 +74,15 @@ func (u *UsageCollector) FeedLine(line string) {
 		u.cacheCreation = max(u.cacheCreation, toInt(usage["cache_creation_input_tokens"]))
 		u.cacheRead = max(u.cacheRead, toInt(usage["cache_read_input_tokens"]))
 	case "message_delta":
-		// output_tokens 为累计值，取最大避免重复累加
+		// output_tokens 为累计值，取最大避免重复累加。
+		// 实测 zcode plan 端点把最终 input/cache 放在 message_delta
+		// （message_start 里 input_tokens 恒 0 且无 cache 字段），因此输入侧
+		// 同样从这里取：全部按 max 合并，重复携带的 0 不会把真实值归零。
 		usage, _ := payload["usage"].(map[string]any)
 		u.output = max(u.output, toInt(usage["output_tokens"]))
+		u.input = max(u.input, toInt(usage["input_tokens"]))
+		u.cacheCreation = max(u.cacheCreation, toInt(usage["cache_creation_input_tokens"]))
+		u.cacheRead = max(u.cacheRead, toInt(usage["cache_read_input_tokens"]))
 	}
 }
 

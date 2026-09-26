@@ -24,8 +24,25 @@ func TestUsageCollectorSSE(t *testing.T) {
 	}
 }
 
-func TestUsageCollectorJSON(t *testing.T) {
-	u := NewUsageCollector(false)
+// TestUsageCollectorDeltaCarriesInput 实测 zcode plan 端点的真实形态：
+// message_start 的 input_tokens 恒 0 且无 cache 字段，最终 input/cache 全在
+// message_delta 里——输入侧必须从 message_delta 按 max 合并，否则恒为 0。
+func TestUsageCollectorDeltaCarriesInput(t *testing.T) {
+	u := NewUsageCollector(true)
+	u.Feed([]byte(`data: {"type":"message_start","message":{"usage":{"input_tokens":0,"output_tokens":0}}}` + "\n"))
+	u.Feed([]byte(`data: {"type":"message_delta","usage":{"input_tokens":293,"output_tokens":3,"cache_read_input_tokens":0}}` + "\n" + "data: [DONE]\n\n"))
+	u.Finish()
+
+	got := u.AsDict()
+	if got.Input != 293 {
+		t.Fatalf("message_delta 的 input_tokens 应计入: %+v", got)
+	}
+	if got.Output != 3 {
+		t.Fatalf("output 不符: %d", got.Output)
+	}
+}
+
+func TestUsageCollectorJSON(t *testing.T) {	u := NewUsageCollector(false)
 	u.Feed([]byte(`{"id":"msg_1","usage":{"input_tokens":7,"output_tokens":8,"cache_creation_input_tokens":0,"cache_read_input_tokens":3}}`))
 	u.Finish()
 	got := u.AsDict()
