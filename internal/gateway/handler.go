@@ -47,7 +47,7 @@ func (h *Handler) handleMessages(w http.ResponseWriter, r *http.Request) {
 		modelName := AnyToString(body["model"])
 		WriteJSON(w, http.StatusBadRequest, map[string]any{
 			"error": map[string]any{
-				"message": fmt.Sprintf("模型 %s 不在可用清單內，僅支持 %s", modelName, strings.Join(AvailableModels, ", ")),
+				"message": fmt.Sprintf("模型 %s 不在可用清单内，仅支持 %s", modelName, strings.Join(AvailableModels, ", ")),
 				"type":    "model_not_allowed",
 			},
 		})

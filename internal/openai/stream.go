@@ -5,8 +5,12 @@ package openai
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
+	"time"
+
+	"zcode2api/internal/web"
 )
 
 // scanSSE 逐行解析上游 SSE，把每个完整事件（event 名 + data 正文）交给 dispatch。
@@ -50,7 +54,7 @@ func scanSSE(body io.Reader, dispatch func(event, data string) error) error {
 // 终止前附 usage chunk。write 只接收 `data: ...\n\n` 形态的完整事件。
 // 返回 write 或读取的错误（客户端中断由调用方经 write 错误感知）。
 func reencodeSSE(body io.Reader, includeUsage bool, write func(string) error) error {
-	enc := &sseEncoder{write: write, includeUsage: includeUsage}
+	enc := &sseEncoder{write: write, includeUsage: includeUsage, lastWriteAt: time.Now()}
 	return scanSSE(body, enc.dispatch)
 }
 
@@ -63,13 +67,30 @@ type sseEncoder struct {
 	model        string
 	toolIndexes  map[int]float64 // Anthropic block index → OpenAI tool_calls index
 	toolCount    float64
-	inputUsage   map[string]any // message_start 的 usage（input 系）
-	outputUsage  map[string]any // message_delta 的 usage（output）
+	usage        map[string]any // message_start / message_delta 的 usage 按 max 合并
 	includeUsage bool
+
+	// 静默诊断：thinking_delta 等增量被本层丢弃时，客户端侧会出现没有任何
+	// 字节的长静默（OpenAI 客户端的流式看门狗按此判定死流并掐断连接）。
+	// 这里记录相邻两次向客户端写出之间的间隔与期间的上游事件类型，间隔超过
+	// sseGapWarnThreshold 写一条警告，供定位「流传输中断: context canceled」。
+	lastWriteAt time.Time
+	lastEvent   string
+
+	// finishEmitted 标记已向客户端写出 finish_reason（逻辑上响应已完整）。
+	// 多数 OpenAI 客户端看到 finish_reason 即关闭连接、不等 [DONE] 哨兵——
+	// 此后的写失败是良性收尾而非传输故障，吞掉以避免误报「流传输中断」。
+	finishEmitted bool
 }
+
+// sseGapWarnThreshold 向客户端写出的静默告警阈值。
+const sseGapWarnThreshold = 10 * time.Second
 
 // dispatch 分发一个已解析的上游事件。
 func (e *sseEncoder) dispatch(event, data string) error {
+	if event != "" {
+		e.lastEvent = event
+	}
 	if data == "" || data == "[DONE]" {
 		return nil
 	}
@@ -107,9 +128,7 @@ func (e *sseEncoder) onMessageStart(payload map[string]any) error {
 	}
 	e.id = newChunkID(stringOr(message["id"], "unknown"))
 	e.model = stringOr(message["model"], "")
-	if u, ok := message["usage"].(map[string]any); ok {
-		e.inputUsage = u
-	}
+	e.mergeUsage(message["usage"])
 	// 首 chunk：delta 带 role（OpenAI 惯例 content 以空串开场）
 	return e.emit(chunk(e.id, e.model, map[string]any{"role": "assistant", "content": ""}, nil))
 }
@@ -150,6 +169,16 @@ func (e *sseEncoder) onContentBlockDelta(payload map[string]any) error {
 			return nil
 		}
 		return e.emit(chunk(e.id, e.model, map[string]any{"content": text}, nil))
+	case "thinking_delta":
+		// 思考增量转发为 reasoning_content（DeepSeek/OpenRouter 惯例字段）。
+		// 丢弃会让整个思考期在 OpenAI 流上完全静默：主流客户端的流式看门狗
+		// （如 omp 的 300s idle watchdog，keepalive 不计时）会掐断连接，
+		// 表现为「流传输中断: context canceled」。转发后思考期持续有进度事件。
+		text, _ := deltaObj["thinking"].(string)
+		if text == "" {
+			return nil
+		}
+		return e.emit(chunk(e.id, e.model, map[string]any{"reasoning_content": text}, nil))
 	case "input_json_delta":
 		index, _ := payload["index"].(float64)
 		toolIndex := e.toolIndexes[int(index)]
@@ -169,21 +198,23 @@ func (e *sseEncoder) onContentBlockDelta(payload map[string]any) error {
 }
 
 func (e *sseEncoder) onMessageDelta(payload map[string]any) error {
-	if u, ok := payload["usage"].(map[string]any); ok {
-		e.outputUsage = u
-	}
+	// 实测上游把最终 input/cache 放在 message_delta（message_start 里 input
+	// 恒 0 且无 cache 字段），与 message_start 一并按 max 合并到同一张表。
+	e.mergeUsage(payload["usage"])
 	deltaObj, _ := payload["delta"].(map[string]any)
 	stopReason := any(nil)
 	if deltaObj != nil {
 		stopReason = mapStopReason(deltaObj["stop_reason"])
+	}
+	if stopReason != nil {
+		e.finishEmitted = true
 	}
 	return e.emit(chunk(e.id, e.model, map[string]any{}, stopReason))
 }
 
 func (e *sseEncoder) onMessageStop() error {
 	if e.includeUsage {
-		merged := mergeUsage(e.inputUsage, e.outputUsage)
-		data, err := marshalCompact(usageChunk(e.id, e.model, merged))
+		data, err := marshalCompact(usageChunk(e.id, e.model, mapUsage(e.usage)))
 		if err != nil {
 			return err
 		}
@@ -192,6 +223,24 @@ func (e *sseEncoder) onMessageStop() error {
 		}
 	}
 	return e.write("data: [DONE]\n\n")
+}
+
+// mergeUsage 把一段 usage 按 max 合并进 e.usage（数值键取大，防重复携带的
+// 0 覆盖真实值；非数值键后者覆盖）。message_start 与 message_delta 共用。
+func (e *sseEncoder) mergeUsage(u any) {
+	m, ok := u.(map[string]any)
+	if !ok {
+		return
+	}
+	if e.usage == nil {
+		e.usage = map[string]any{}
+	}
+	for k, v := range m {
+		if prev, ok := e.usage[k]; ok && numericGreater(prev, v) {
+			continue
+		}
+		e.usage[k] = v
+	}
 }
 
 // emit 序列化并写出一个 chunk 事件。
@@ -223,11 +272,27 @@ func openAIErrorObject(payload map[string]any) map[string]any {
 }
 
 func (e *sseEncoder) emit(payload map[string]any) error {
+	// 静默间隔观测：距上次向客户端写出超过阈值时记录（含期间的上游事件类型）。
+	now := time.Now()
+	if gap := now.Sub(e.lastWriteAt); gap >= sseGapWarnThreshold {
+		web.Warn("openai", fmt.Sprintf(
+			"SSE 流已静默 %d 秒（期间上游事件: %s，该类增量未向客户端转发），客户端流式看门狗可能超时",
+			int(gap.Seconds()), e.lastEvent))
+	}
 	data, err := marshalCompact(payload)
 	if err != nil {
 		return err
 	}
-	return e.write("data: " + data + "\n\n")
+	if err := e.write("data: " + data + "\n\n"); err != nil {
+		// finish_reason 之后的写失败：客户端已带着完整响应提前断开，良性收尾，
+		// 吞掉以避免把正常完成误报成「流传输中断」。
+		if e.finishEmitted {
+			return nil
+		}
+		return err
+	}
+	e.lastWriteAt = time.Now()
+	return nil
 }
 
 // mergeUsage 合并 message_start（input 系）与 message_delta（output）的 usage。

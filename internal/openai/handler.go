@@ -130,8 +130,13 @@ func deliverSSEWith(w http.ResponseWriter, d gateway.Delivery, reencode func(io.
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(io.Discard, d.Body)
-	return err
+	// 重编码已完整收尾（[DONE] 已写出）：客户端通常在收到 [DONE] 后立即断开，
+	// 此时继续排空上游尾包会读到 request context canceled——这是正常收尾而非
+	// 传输故障，返回 nil 让引擎按完整交付记账（usage 按已读部分累计）。
+	if _, err = io.Copy(io.Discard, d.Body); err != nil {
+		return nil
+	}
+	return nil
 }
 
 func deliverStream(w http.ResponseWriter, d gateway.Delivery, includeUsage bool) error {
