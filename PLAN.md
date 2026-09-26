@@ -692,6 +692,43 @@ Previous read at ... by goroutine 11:
   skipIDs 累积、proxy 包的 CONNECT/SOCKS5 解析与超时、SSRF 面（proxy_url 只能经后台 API 设置且经
   `NormalizeProxyURL`）、后台 32 条路由全部挂 `guard`、`VerifyAdminKey` 滑动窗与 `hmac.Equal` 定时常量比较。
 
+### M15 双 provider（bigmodel）+ 后台三语 i18n（2026-09-26）
+
+新增 `bigmodel`（智谱国内站）provider，与 `zai` 并列入池调度。端点与参数形态
+取自 ZCode 桌面端 `resources/app.asar` 反混淆（`internal/oauth/bigmodel.go` 头注
+记录依据）：授权入口为 `https://bigmodel.cn/login`（参数 `redirect`/`appId=zcode`/
+`state`，非标准 authorize 端点），兑换端点与 zai 共用 `zcode.z.ai/api/v1/oauth/token`
+（请求体加 `provider:"bigmodel"`），回调落点与 zai 相同故 `ParseCallbackURL` 不分家；
+响应在 `data.token`（Coding Plan JWT）之外还带 `data.bigmodel.access_token/refresh_token`。
+
+关键决策与边界：
+
+- **JWT 同源假设**：两族 JWT 均由 zcode.z.ai 签发，`upstream.BuildRequest` 对
+  bigmodel JWT 走与 zai 相同的 `UpstreamZai` 管道（Bearer）。此假设需真实 bigmodel
+  账号联调确认；若有出入只需调整 `BuildRequest` 的 provider 分支。
+- **模式约束**：bigmodel 仅 JWT 模式（`AddAccount` 拒绝 apiKey 形态；
+  `model.SupportsAPIKeyMode` 守卫 ExchangeAPIKey 兑换链——该链路为 zai 专用）。
+- **调度面**：`store.Providers` 扩为二元组；新增 `Store.SelectAny`（按池顺序轮询）
+  供 gateway 与 asyncpool 使用；quota 刷新、批量领取、刷新全部改遍历 `Providers`。
+  `store.New`/`load` 的两个 provider map 字面量必须同步扩展，否则加载时静默丢行。
+- **三语 i18n**：后台前端引入 react-i18next（`src/i18n/`），全量抽 key，
+  语言包 `zh-CN`/`zh-TW`/`en`，localStorage `lang` 记忆 + navigator.language 回退；
+  新增账号对话框带 provider 选择器（授权登入与粘贴两 tab 共用）。
+- guest 提交页保持 zai-only；refresh_token 随 ExchangeResult 带出但暂不落库
+  （Account 模型无字段，刷新流程未实现）。
+
+新增文件：`internal/oauth/bigmodel.go`（+ 测试）、`frontend/src/i18n/`。
+改动面：`model`/`store`/`oauth`/`adminapi{login,accounts,claim}`/`gateway`/`asyncpool`/
+`quota`/`upstream`/`cmd/zcode2api`（CLI 多 provider）与前端全量文案。
+
+验证：`go build ./... && go vet ./... && go test ./...` 全绿（oauth 新增大模型
+兑换链 httptest 用例）；后台三语切换与 bigmodel 登录链路浏览器实测。
+
+**实测补丁**：Windows 上 rod 默认的 leakless 守护进程每次启动都解压 leakless.exe
+到 %TEMP%，被 Windows Defender 按 PUP 拦截，浏览器池永远启动失败进冷却
+（F 盘加白名单无效——文件根本不在 F 盘）。`newLauncher` 在 Windows 上禁用
+leakless（进程收尾由 closeLauncher 负责），实测浏览器 2 秒内拉起、captcha 包全绿。
+
 ## 7. 测试策略
 
 - 单测**逐个移植** Python 版 `tests/`（错误分类、池协议、路由白名单、quota 合并、oauth、usage、鉴权引导），
