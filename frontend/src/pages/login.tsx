@@ -2,6 +2,7 @@
 import { Layers, Loader2 } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -11,6 +12,7 @@ import { verifyKey } from '@/lib/api'
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const { t } = useTranslation()
   const [key, setKey] = useState('')
   const [busy, setBusy] = useState(false)
   const [checking, setChecking] = useState(true)
@@ -40,10 +42,10 @@ export function LoginPage() {
         await adminKey.set(value)
         navigate('/admin/dashboard', { replace: true })
       } else {
-        toast.error('密碼無效')
+        toast.error(t('login.invalid_key'))
       }
     } catch {
-      toast.error('連線失敗')
+      toast.error(t('login.connection_failed'))
     } finally {
       setBusy(false)
     }
@@ -57,7 +59,7 @@ export function LoginPage() {
   if (checking) {
     return (
       <div className="flex min-h-svh items-center justify-center bg-muted/40">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label="檢查登入狀態" />
+        <Loader2 className="size-6 animate-spin text-muted-foreground" aria-label={t('login.checking_aria')} />
       </div>
     )
   }
@@ -71,21 +73,21 @@ export function LoginPage() {
               <Layers className="size-5" />
             </div>
             <div className="space-y-1">
-              <h1 className="text-lg font-semibold tracking-tight">後台管理</h1>
-              <p className="text-sm text-muted-foreground">zcode2api-plus · 請輸入後台密碼以繼續</p>
+              <h1 className="text-lg font-semibold tracking-tight">{t('login.title')}</h1>
+              <p className="text-sm text-muted-foreground">{t('login.subtitle')}</p>
             </div>
           </div>
           <form className="flex flex-col gap-3" onSubmit={onSubmit}>
             <Input
               type="password"
-              placeholder="後台密碼"
+              placeholder={t('login.password_placeholder')}
               autoFocus
               value={key}
               onChange={(e) => setKey(e.target.value)}
             />
             <Button type="submit" className="w-full" disabled={busy || !key.trim()}>
               {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-              繼續
+              {t('login.continue')}
             </Button>
           </form>
         </CardContent>

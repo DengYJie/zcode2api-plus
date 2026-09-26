@@ -16,6 +16,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm'
@@ -40,7 +41,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errMsg } from '@/lib/api'
 import { fmt, fmtCompact, fmtDate, normalizeModel, proxyScheme } from '@/lib/format'
-import { STATUS_LABEL, type Account, type AccountStatus, type AccountsResponse, type ProxyProfile } from '@/lib/types'
+import { type Account, type AccountStatus, type AccountsResponse, type ProxyProfile } from '@/lib/types'
 
 /* 頂層「直連」的 Select 哨兵值：Radix Select 不允許空字串 value */
 const PROXY_DIRECT = '__direct__'
@@ -57,6 +58,7 @@ const STATUS_BADGE: Record<AccountStatus, string> = {
 type FilterKey = 'all' | AccountStatus
 
 export function AccountsPage() {
+  const { t } = useTranslation()
   const qc = useQueryClient()
   const { confirm, element: confirmElement } = useConfirm()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -81,6 +83,7 @@ export function AccountsPage() {
   /* 新增對話框 */
   const [addOpen, setAddOpen] = useState(false)
   const [addTab, setAddTab] = useState<'login' | 'paste'>('login')
+  const [addProvider, setAddProvider] = useState<'zai' | 'bigmodel'>('zai')
   const [tokensText, setTokensText] = useState('')
   const [addProxy, setAddProxy] = useState(PROXY_DIRECT)
   const [adding, setAdding] = useState(false)
@@ -132,6 +135,7 @@ export function AccountsPage() {
     setTokensText('')
     setAddProxy(PROXY_DIRECT)
     setAddTab('login')
+    setAddProvider('zai')
     setFlow(null)
     setCallbackUrl('')
     setLoginStatus('')
@@ -142,20 +146,21 @@ export function AccountsPage() {
   async function doAdd() {
     const list = tokensText.split('\n').map((s) => s.trim()).filter(Boolean)
     if (!list.length) {
-      toast.error('請輸入至少一個 Token')
+      toast.error(t('accounts.token_required'))
       return
     }
     setAdding(true)
     try {
       const d = await api<{ count: number }>('POST', '/accounts', {
         tokens: list,
+        provider: addProvider,
         proxy_id: addProxy === PROXY_DIRECT ? null : addProxy,
       })
       setAddOpen(false)
-      toast.success(`新增 ${d.count} 個帳號`)
+      toast.success(t('accounts.added', { count: d.count }))
       invalidate()
     } catch (e) {
-      toast.error('新增失敗：' + errMsg(e))
+      toast.error(t('accounts.add_failed', { msg: errMsg(e) }))
     } finally {
       setAdding(false)
     }
@@ -164,12 +169,18 @@ export function AccountsPage() {
   async function startLogin() {
     setStarting(true)
     try {
-      const d = await api<{ flow_id: string; authorize_url: string }>('POST', '/login/start')
+      const d = await api<{ flow_id: string; authorize_url: string }>('POST', '/login/start', {
+        provider: addProvider,
+      })
       setFlow({ flowId: d.flow_id, url: d.authorize_url })
-      setLoginStatus('已產生授權連結，複製到瀏覽器開啟並完成 Z.AI 登入…')
+      setLoginStatus(
+        addProvider === 'bigmodel'
+          ? t('accounts.login_started_bigmodel')
+          : t('accounts.login_started_zai'),
+      )
       setLoginErr(false)
     } catch (e) {
-      toast.error('發起登入失敗：' + errMsg(e))
+      toast.error(t('accounts.login_start_failed', { msg: errMsg(e) }))
     } finally {
       setStarting(false)
     }
@@ -179,8 +190,8 @@ export function AccountsPage() {
     if (!flow) return
     navigator.clipboard
       .writeText(flow.url)
-      .then(() => toast.success('已複製'))
-      .catch(() => toast.error('複製失敗'))
+      .then(() => toast.success(t('common.copied')))
+      .catch(() => toast.error(t('common.copy_failed')))
   }
 
   function openLoginUrl() {
@@ -189,16 +200,16 @@ export function AccountsPage() {
 
   async function completeLogin() {
     if (!flow) {
-      toast.error('請先開始登入')
+      toast.error(t('accounts.login_required'))
       return
     }
     const url = callbackUrl.trim()
     if (!url) {
-      toast.error('請貼上登入完成頁的完整地址')
+      toast.error(t('accounts.callback_required'))
       return
     }
     setCompleting(true)
-    setLoginStatus('正在驗證並匯入帳號…')
+    setLoginStatus(t('accounts.verifying'))
     setLoginErr(false)
     try {
       const d = await api<{ status: string; message?: string }>(
@@ -206,12 +217,12 @@ export function AccountsPage() {
         '/login/complete/' + encodeURIComponent(flow.flowId),
         { callback_url: url },
       )
-      if (d.status !== 'ready') throw new Error(d.message || '授權結果無效')
-      toast.success('登入成功，已匯入帳號池')
+      if (d.status !== 'ready') throw new Error(d.message || t('accounts.auth_invalid'))
+      toast.success(t('accounts.login_success'))
       setAddOpen(false)
       invalidate()
     } catch (e) {
-      setLoginStatus(errMsg(e) || '完成授權失敗')
+      setLoginStatus(errMsg(e) || t('accounts.login_complete_failed'))
       setLoginErr(true)
     } finally {
       setCompleting(false)
@@ -249,10 +260,10 @@ export function AccountsPage() {
       if (editProxy !== PROXY_LEGACY) payload.proxy_id = editProxy === PROXY_DIRECT ? null : editProxy
       await api('PUT', '/accounts/' + editId, payload)
       setEditOpen(false)
-      toast.success('已儲存')
+      toast.success(t('common.saved'))
       invalidate()
     } catch (e) {
-      toast.error('儲存失敗：' + errMsg(e))
+      toast.error(t('accounts.save_failed', { msg: errMsg(e) }))
     } finally {
       setSaving(false)
     }
@@ -262,11 +273,11 @@ export function AccountsPage() {
   function doDelete(a: Account) {
     const label = a.email || a.name || a.id
     confirm({
-      title: '刪除帳號',
+      title: t('accounts.delete_title'),
       danger: true,
       description: (
         <>
-          確認刪除 <code className="rounded bg-muted px-1 py-0.5">{label}</code>？此操作無法復原。
+          {t('accounts.delete_confirm_prefix')}<code className="rounded bg-muted px-1 py-0.5">{label}</code>{t('accounts.delete_confirm_suffix')}
         </>
       ),
       onConfirm: async () => {
@@ -275,13 +286,13 @@ export function AccountsPage() {
           // 以为凭证已撤销。按实际删除数提示。
           const res = await api<{ deleted: number }>('DELETE', '/accounts', [a.id])
           if (!res.deleted) {
-            toast.warning('帳號不存在或已被刪除')
+            toast.warning(t('accounts.not_found_or_deleted'))
           } else {
-            toast.success('已刪除')
+            toast.success(t('common.deleted'))
           }
           invalidate()
         } catch (e) {
-          toast.error('刪除失敗：' + errMsg(e))
+          toast.error(t('accounts.delete_failed', { msg: errMsg(e) }))
         }
       },
     })
@@ -292,7 +303,7 @@ export function AccountsPage() {
       await api('POST', '/accounts/' + a.id + '/enabled', { enabled: a.status === 'disabled' })
       invalidate()
     } catch (e) {
-      toast.error('操作失敗：' + errMsg(e))
+      toast.error(t('accounts.operation_failed', { msg: errMsg(e) }))
     }
   }
 
@@ -300,20 +311,20 @@ export function AccountsPage() {
   function doArchive(a: Account) {
     const label = a.email || a.name || a.id
     confirm({
-      title: '歸檔帳號',
+      title: t('accounts.archive_title'),
       description: (
         <>
-          歸檔 <code className="rounded bg-muted px-1 py-0.5">{label}</code>
-          ？歸檔後停止調用該帳號，可在「歸檔」區恢復。
+          {t('accounts.archive_confirm_prefix')}<code className="rounded bg-muted px-1 py-0.5">{label}</code>
+          {t('accounts.archive_confirm_suffix')}
         </>
       ),
       onConfirm: async () => {
         try {
           await api('POST', '/accounts/' + a.id + '/archived', { archived: true })
-          toast.success('已歸檔')
+          toast.success(t('accounts.archived'))
           invalidate()
         } catch (e) {
-          toast.error('歸檔失敗：' + errMsg(e))
+          toast.error(t('accounts.archive_failed', { msg: errMsg(e) }))
         }
       },
     })
@@ -322,10 +333,10 @@ export function AccountsPage() {
   async function doRestore(a: Account) {
     try {
       await api('POST', '/accounts/' + a.id + '/archived', { archived: false })
-      toast.success('已恢復到帳號池')
+      toast.success(t('accounts.restored'))
       invalidate()
     } catch (e) {
-      toast.error('恢復失敗：' + errMsg(e))
+      toast.error(t('accounts.restore_failed', { msg: errMsg(e) }))
     }
   }
 
@@ -334,9 +345,9 @@ export function AccountsPage() {
     const text = a.email || a.name || a.id
     try {
       await navigator.clipboard.writeText(text)
-      toast.success('已複製 ' + text)
+      toast.success(t('accounts.email_copied', { text }))
     } catch {
-      toast.error('複製失敗')
+      toast.error(t('common.copy_failed'))
     }
   }
 
@@ -345,9 +356,9 @@ export function AccountsPage() {
     setRefreshing((s) => new Set(s).add(a.id))
     try {
       await api('POST', '/accounts/' + a.id + '/refresh')
-      toast.success('額度已重新整理')
+      toast.success(t('accounts.quota_refreshed'))
     } catch (e) {
-      toast.error('重新整理失敗：' + errMsg(e))
+      toast.error(t('accounts.refresh_failed', { msg: errMsg(e) }))
     } finally {
       setRefreshing((s) => {
         const next = new Set(s)
@@ -359,13 +370,13 @@ export function AccountsPage() {
   }
 
   async function refreshAll() {
-    toast.info('正在重新整理全部額度…')
+    toast.info(t('accounts.refreshing_all'))
     try {
       const d = await api<{ summary: { ok: number; fail: number } }>('POST', '/accounts/refresh', { all: true })
-      toast.success(`重新整理完成：成功 ${d.summary.ok}，失敗 ${d.summary.fail}`)
+      toast.success(t('accounts.refresh_done', { ok: d.summary.ok, fail: d.summary.fail }))
       invalidate()
     } catch (e) {
-      toast.error('重新整理失敗：' + errMsg(e))
+      toast.error(t('accounts.refresh_failed', { msg: errMsg(e) }))
     }
   }
 
@@ -374,23 +385,23 @@ export function AccountsPage() {
 
   function claimOutcomeToast(name: string, d: { outcomes: { ok: boolean; message?: string }[]; summary: { ok: number; fail: number } }) {
     for (const o of d.outcomes.filter((x) => !x.ok)) {
-      toast.warning(`${name} 領取失敗：${o.message ?? '未知原因'}`)
+      toast.warning(t('accounts.claim_one_failed', { name, msg: o.message ?? t('accounts.unknown_reason') }))
     }
-    toast.success(`${name} 套餐領取完成：成功 ${d.summary.ok}，失敗 ${d.summary.fail}`)
+    toast.success(t('accounts.claim_done_one', { name, ok: d.summary.ok, fail: d.summary.fail }))
     invalidate()
   }
 
   async function claimOne(a: Account) {
     if (claiming.has(a.id)) return
     setClaiming((s) => new Set(s).add(a.id))
-    toast.info(`${a.email || a.name || a.id} 正在領取套餐…`)
+    toast.info(t('accounts.claiming_one', { name: a.email || a.name || a.id }))
     try {
       const d = await api<{ outcomes: { ok: boolean; message?: string }[]; summary: { ok: number; fail: number } }>(
         'POST', '/claim', { account_ids: [a.id] },
       )
       claimOutcomeToast(a.email || a.name || a.id, d)
     } catch (e) {
-      toast.error('領取失敗：' + errMsg(e))
+      toast.error(t('accounts.claim_failed', { msg: errMsg(e) }))
     } finally {
       setClaiming((s) => {
         const next = new Set(s)
@@ -402,19 +413,19 @@ export function AccountsPage() {
 
   async function claimAll() {
     confirm({
-      title: '領取活動套餐',
-      description: '將對池內全部 JWT 帳號依優先級領取當前可領的限時活動套餐（需求解驗證碼，可能耗時數十秒）。確認執行？',
+      title: t('accounts.claim_title'),
+      description: t('accounts.claim_description'),
       onConfirm: async () => {
-        toast.info('正在領取套餐…')
+        toast.info(t('accounts.claiming_all'))
         try {
           const d = await api<{ outcomes: { account_name?: string; ok: boolean; message?: string }[]; summary: { ok: number; fail: number } }>('POST', '/claim', {})
           for (const o of d.outcomes.filter((x) => !x.ok)) {
-            toast.warning(`${o.account_name ?? ''} 領取失敗：${o.message ?? '未知原因'}`)
+            toast.warning(t('accounts.claim_one_failed', { name: o.account_name ?? '', msg: o.message ?? t('accounts.unknown_reason') }))
           }
-          toast.success(`套餐領取完成：成功 ${d.summary.ok}，失敗 ${d.summary.fail}`)
+          toast.success(t('accounts.claim_done_all', { ok: d.summary.ok, fail: d.summary.fail }))
           invalidate()
         } catch (e) {
-          toast.error('領取失敗：' + errMsg(e))
+          toast.error(t('accounts.claim_failed', { msg: errMsg(e) }))
         }
       },
     })
@@ -423,20 +434,20 @@ export function AccountsPage() {
   function resetStats(a: Account) {
     const label = a.email || a.name || a.id
     confirm({
-      title: '重置 Token 統計',
+      title: t('accounts.reset_stats_title'),
       danger: true,
       description: (
         <>
-          確認清零 <code className="rounded bg-muted px-1 py-0.5">{label}</code> 的累計 Token 用量？此操作不可撤銷。
+          {t('accounts.reset_confirm_prefix')}<code className="rounded bg-muted px-1 py-0.5">{label}</code>{t('accounts.reset_confirm_suffix')}
         </>
       ),
       onConfirm: async () => {
         try {
           await api('POST', '/accounts/' + a.id + '/reset-stats')
-          toast.success('已重置統計')
+          toast.success(t('accounts.stats_reset'))
           invalidate()
         } catch (e) {
-          toast.error('重置失敗：' + errMsg(e))
+          toast.error(t('accounts.reset_failed', { msg: errMsg(e) }))
         }
       },
     })
@@ -452,7 +463,7 @@ export function AccountsPage() {
       a.click()
       URL.revokeObjectURL(a.href)
     } catch (e) {
-      toast.error('匯出失敗：' + errMsg(e))
+      toast.error(t('accounts.export_failed', { msg: errMsg(e) }))
     }
   }
 
@@ -462,10 +473,10 @@ export function AccountsPage() {
     try {
       const payload: unknown = JSON.parse(await file.text())
       const d = await api<{ count: number }>('POST', '/import', payload)
-      toast.success(`匯入 ${d.count} 個帳號`)
+      toast.success(t('accounts.imported', { count: d.count }))
       invalidate()
     } catch (e) {
-      toast.error('匯入失敗：' + errMsg(e))
+      toast.error(t('accounts.import_failed', { msg: errMsg(e) }))
     }
     ev.target.value = ''
   }
@@ -475,38 +486,38 @@ export function AccountsPage() {
       {/* 頁首 */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">帳號池</h1>
-          <p className="text-sm text-muted-foreground">多帳號輪詢 · 額度用完自動切換下一個帳號 · 即時用量監控</p>
+          <h1 className="text-xl font-semibold tracking-tight">{t('accounts.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('accounts.subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
-            即時監控中
+            {t('accounts.live_monitoring')}
           </span>
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
-            <Upload data-slot="icon" /> 匯入
+            <Upload data-slot="icon" /> {t('accounts.import')}
           </Button>
           <Button variant="outline" size="sm" onClick={() => void doExport()}>
-            <Download /> 匯出
+            <Download /> {t('accounts.export')}
           </Button>
           <Button variant="outline" size="sm" onClick={() => void refreshAll()}>
-            <RefreshCw /> 重新整理額度
+            <RefreshCw /> {t('accounts.refresh_quota')}
           </Button>
           <Button variant="outline" size="sm" onClick={claimAll}>
-            <Gift /> 領取套餐
+            <Gift /> {t('accounts.claim_plans')}
           </Button>
           <Button
             variant={showArchived ? 'default' : 'outline'}
             size="sm"
             onClick={() => setShowArchived((v) => !v)}
           >
-            <Archive /> 歸檔
+            <Archive /> {t('accounts.archive')}
             {archivedAccounts.length > 0 && (
               <span className="tabular-nums opacity-70">{archivedAccounts.length}</span>
             )}
           </Button>
           <Button size="sm" onClick={openAdd}>
-            <Plus /> 新增
+            <Plus /> {t('common.add')}
           </Button>
         </div>
       </div>
@@ -514,13 +525,13 @@ export function AccountsPage() {
 
       {/* 帳號概覽 */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatCell label="帳號總數" value={fmt(stats?.total)} icon={<Users className="size-4" />} />
-        <StatCell label="正常" value={fmt(stats?.active)} color="#16a34a" icon={<span className="size-2 rounded-full bg-emerald-500" />} />
-        <StatCell label="額度用完" value={fmt(stats?.exhausted)} color="#8d6bbd" icon={<span className="size-2 rounded-full bg-purple-500" />} />
+        <StatCell label={t('accounts.stat_total')} value={fmt(stats?.total)} icon={<Users className="size-4" />} />
+        <StatCell label={t('accounts.stat_active')} value={fmt(stats?.active)} color="#16a34a" icon={<span className="size-2 rounded-full bg-emerald-500" />} />
+        <StatCell label={t('accounts.stat_exhausted')} value={fmt(stats?.exhausted)} color="#8d6bbd" icon={<span className="size-2 rounded-full bg-purple-500" />} />
         <Card>
           <CardContent className="flex flex-col gap-1">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              總額度（剩餘）
+              {t('accounts.total_quota')}
               <span className="size-2 rounded-full" style={{ background: quotaColor }} />
             </div>
             <div className="text-2xl font-semibold tabular-nums" style={{ color: '#4c9168' }}>
@@ -530,20 +541,20 @@ export function AccountsPage() {
               <span className="block h-full rounded-full" style={{ width: `${quotaPct}%`, background: quotaColor }} />
             </div>
             <div className="text-[11px] text-muted-foreground">
-              {totalQuota ? `${fmtCompact(totalRem)} / ${fmtCompact(totalQuota)} · ${quotaPct.toFixed(1)}%` : '尚無額度資料'}
+              {totalQuota ? t('accounts.quota_ratio', { rem: fmtCompact(totalRem), total: fmtCompact(totalQuota), pct: quotaPct.toFixed(1) }) : t('accounts.no_quota_data')}
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="flex flex-col gap-1" title={`輸入 ${fmt(stats?.tokens_in)} · 輸出 ${fmt(stats?.tokens_out)} · 快取 ${fmt(stats?.tokens_cache)}`}>
+          <CardContent className="flex flex-col gap-1" title={t('accounts.tokens_tooltip', { in: fmt(stats?.tokens_in), out: fmt(stats?.tokens_out), cache: fmt(stats?.tokens_cache) })}>
             <div className="flex items-center justify-between text-xs text-muted-foreground">
-              累計調度 Tokens（入+出）
+              {t('accounts.total_tokens')}
               <span className="size-2 rounded-full bg-blue-500" />
             </div>
             <div className="text-2xl font-semibold tabular-nums" style={{ color: '#4c76b2' }}>
               {fmtCompact(Number(stats?.tokens_in) + Number(stats?.tokens_out))}
             </div>
-            <div className="text-[11px] text-muted-foreground">入 {fmtCompact(stats?.tokens_in)} · 出 {fmtCompact(stats?.tokens_out)}</div>
+            <div className="text-[11px] text-muted-foreground">{t('accounts.tokens_io', { in: fmtCompact(stats?.tokens_in), out: fmtCompact(stats?.tokens_out) })}</div>
           </CardContent>
         </Card>
       </div>
@@ -551,18 +562,18 @@ export function AccountsPage() {
       {/* 明細標題＋篩選 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-medium">
-          帳號明細 <Badge variant="secondary">{filtered.length}</Badge>
+          {t('accounts.details')} <Badge variant="secondary">{filtered.length}</Badge>
         </div>
         <span className="text-xs text-muted-foreground">
-          {data ? '更新於 ' + new Date(data.ts * 1000).toLocaleTimeString('zh-TW') : ''}
+          {data ? t('accounts.updated_at', { time: new Date(data.ts * 1000).toLocaleTimeString('zh-TW') }) : ''}
         </span>
       </div>
       <div className="flex flex-wrap gap-2">
         {(
           [
-            ['all', '全部'],
-            ['exhausted', '用完'],
-            ['disabled', '停用'],
+            ['all', t('common.all')],
+            ['exhausted', t('status.exhausted')],
+            ['disabled', t('status.disabled')],
           ] as [FilterKey, string][]
         ).map(([k, l]) => (
           <Button
@@ -584,22 +595,22 @@ export function AccountsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-center">賬號</TableHead>
-                <TableHead className="w-20 text-center">狀態</TableHead>
-                <TableHead className="w-28 text-center">出口線路</TableHead>
-                <TableHead className="min-w-56 text-center">額度</TableHead>
-                <TableHead className="w-16 text-center">呼叫</TableHead>
-                <TableHead className="w-16 text-center">失敗</TableHead>
+                <TableHead className="text-center">{t('accounts.col_account')}</TableHead>
+                <TableHead className="w-20 text-center">{t('accounts.col_status')}</TableHead>
+                <TableHead className="w-28 text-center">{t('accounts.col_proxy')}</TableHead>
+                <TableHead className="min-w-56 text-center">{t('accounts.col_quota')}</TableHead>
+                <TableHead className="w-16 text-center">{t('accounts.col_calls')}</TableHead>
+                <TableHead className="w-16 text-center">{t('accounts.col_fails')}</TableHead>
                 <TableHead className="w-24 text-center">Tokens</TableHead>
-                <TableHead className="w-28 text-center">最近使用</TableHead>
-                <TableHead className="w-44 text-center">操作</TableHead>
+                <TableHead className="w-28 text-center">{t('accounts.col_last_used')}</TableHead>
+                <TableHead className="w-44 text-center">{t('common.actions')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {!filtered.length ? (
                 <TableRow>
                   <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
-                    尚無帳號，請點擊右上角「新增」
+                    {t('accounts.empty')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -610,24 +621,24 @@ export function AccountsPage() {
                         <EmailCell account={a} onCopy={() => void copyEmail(a)} />
                         {(a.disabled_models || []).length > 0 && (
                           <Badge variant="outline" className="shrink-0 text-[11px] font-normal" title={(a.disabled_models || []).join('、')}>
-                            停用 {a.disabled_models.length} 模型
+                            {t('accounts.disabled_models_count', { count: a.disabled_models.length })}
                           </Badge>
                         )}
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge className={STATUS_BADGE[a.status]}>{STATUS_LABEL[a.status] || a.status}</Badge>
+                      <Badge className={STATUS_BADGE[a.status]}>{t('status.' + a.status)}</Badge>
                     </TableCell>
                     <TableCell>
                       {!a.proxy_url ? (
                         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                           <span className="size-1.5 rounded-full bg-muted-foreground/40" />
-                          直連
+                          {t('accounts.direct')}
                         </span>
                       ) : (
                         <span className="flex items-center gap-1.5 text-xs">
                           <span className="size-1.5 rounded-full bg-emerald-500/70" />
-                          {proxies.find((p) => p.id === a.proxy_id)?.name || '舊版自訂代理'}
+                          {proxies.find((p) => p.id === a.proxy_id)?.name || t('accounts.legacy_proxy')}
                         </span>
                       )}
                     </TableCell>
@@ -635,7 +646,7 @@ export function AccountsPage() {
                       {allPlansExpired(a) ? (
                         <span className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
                           <span className="size-1.5 rounded-full" style={{ background: '#c9c9cf' }} />
-                          已到期 {allPlansExpired(a)}
+                          {t('accounts.expired_at', { date: allPlansExpired(a) })}
                         </span>
                       ) : (
                         <>
@@ -653,37 +664,37 @@ export function AccountsPage() {
                     <TableCell>
                       <div className="flex justify-end gap-0.5">
                         {a.mode === 'jwt' && (
-                          <Button variant="ghost" size="icon-sm" title="重新整理額度" onClick={() => void refreshOne(a)}>
+                          <Button variant="ghost" size="icon-sm" title={t('accounts.refresh_quota')} onClick={() => void refreshOne(a)}>
                             {refreshing.has(a.id) ? <Loader2 className="animate-spin" /> : <RefreshCw />}
                           </Button>
                         )}
                         {a.mode === 'jwt' && (
-                          <Button variant="ghost" size="icon-sm" title="領取活動套餐" onClick={() => void claimOne(a)}>
+                          <Button variant="ghost" size="icon-sm" title={t('accounts.claim_title')} onClick={() => void claimOne(a)}>
                             {claiming.has(a.id) ? <Loader2 className="animate-spin" /> : <Gift />}
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon-sm" title="重置 Token 統計" onClick={() => resetStats(a)}>
+                        <Button variant="ghost" size="icon-sm" title={t('accounts.reset_stats_title')} onClick={() => resetStats(a)}>
                           <RotateCcw />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          title={a.status === 'disabled' ? '恢復' : '停用'}
+                          title={a.status === 'disabled' ? t('accounts.enable') : t('accounts.disable')}
                           onClick={() => void toggleEnabled(a)}
                         >
                           {a.status === 'disabled' ? <RotateCcw /> : <XCircle />}
                         </Button>
-                        <Button variant="ghost" size="icon-sm" title="歸檔（停止調用）" onClick={() => doArchive(a)}>
+                        <Button variant="ghost" size="icon-sm" title={t('accounts.archive_action')} onClick={() => doArchive(a)}>
                           <Archive />
                         </Button>
-                        <Button variant="ghost" size="icon-sm" title="編輯" onClick={() => openEdit(a)}>
+                        <Button variant="ghost" size="icon-sm" title={t('common.edit')} onClick={() => openEdit(a)}>
                           <Pencil />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon-sm"
                           className="text-destructive hover:text-destructive"
-                          title="刪除"
+                          title={t('common.delete')}
                           onClick={() => doDelete(a)}
                         >
                           <Trash2 />
@@ -705,18 +716,18 @@ export function AccountsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-center">賬號</TableHead>
-                  <TableHead className="w-40 text-center">歸檔時間</TableHead>
-                  <TableHead className="w-24 text-center">累計呼叫</TableHead>
+                  <TableHead className="text-center">{t('accounts.col_account')}</TableHead>
+                  <TableHead className="w-40 text-center">{t('accounts.col_archived_at')}</TableHead>
+                  <TableHead className="w-24 text-center">{t('accounts.col_total_calls')}</TableHead>
                   <TableHead className="w-24 text-center">Tokens</TableHead>
-                  <TableHead className="w-24 text-center">操作</TableHead>
+                  <TableHead className="w-24 text-center">{t('common.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {!archivedAccounts.length ? (
                   <TableRow>
                     <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
-                      尚無歸檔帳號。歸檔＝停止調用並強制停用，帳號記錄保留在此。
+                      {t('accounts.empty_archived')}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -734,14 +745,14 @@ export function AccountsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-center gap-0.5">
-                          <Button variant="ghost" size="icon-sm" title="恢復到帳號池" onClick={() => void doRestore(a)}>
+                          <Button variant="ghost" size="icon-sm" title={t('accounts.restore_to_pool')} onClick={() => void doRestore(a)}>
                             <ArchiveRestore />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon-sm"
                             className="text-destructive hover:text-destructive"
-                            title="刪除"
+                            title={t('common.delete')}
                             onClick={() => doDelete(a)}
                           >
                             <Trash2 />
@@ -761,44 +772,56 @@ export function AccountsPage() {
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>新增帳號</DialogTitle>
-            <DialogDescription>支援授權登入或貼上憑證，貼上時每行一個。</DialogDescription>
+            <DialogTitle>{t('accounts.add_title')}</DialogTitle>
+            <DialogDescription>{t('accounts.add_description')}</DialogDescription>
           </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <Label>{t('accounts.provider_label')}</Label>
+            <Select value={addProvider} onValueChange={(v) => { setAddProvider(v as 'zai' | 'bigmodel'); setFlow(null); setCallbackUrl('') }}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zai">{t('provider.zai')}</SelectItem>
+                <SelectItem value="bigmodel">{t('provider.bigmodel')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Tabs value={addTab} onValueChange={(v) => setAddTab(v as 'login' | 'paste')}>
             <TabsList className="w-full">
-              <TabsTrigger value="login" className="flex-1">授權登入</TabsTrigger>
-              <TabsTrigger value="paste" className="flex-1">貼上憑證</TabsTrigger>
+              <TabsTrigger value="login" className="flex-1">{t('accounts.tab_login')}</TabsTrigger>
+              <TabsTrigger value="paste" className="flex-1">{t('accounts.tab_paste')}</TabsTrigger>
             </TabsList>
 
             {/* 授權登入 */}
             <TabsContent value="login" className="flex flex-col gap-3">
               <p className="text-xs text-muted-foreground">
-                Z.AI 只允許 ZCode 官方回呼地址，需要在登入完成後複製一次瀏覽器地址，不需要提供帳號密碼。
+                {addProvider === 'bigmodel'
+                  ? t('accounts.login_hint_bigmodel')
+                  : t('accounts.login_hint_zai')}
               </p>
               {!flow ? (
                 <Button className="h-10 w-full" disabled={starting} onClick={() => void startLogin()}>
                   {starting ? <Loader2 className="animate-spin" /> : null}
-                  開始登入
+                  {t('accounts.start_login')}
                 </Button>
               ) : (
                 <div className="flex flex-col gap-3">
-                  <p className="text-xs text-muted-foreground">1. 開啟授權頁並完成 Z.AI 登入：</p>
+                  <p className="text-xs text-muted-foreground">{addProvider === 'bigmodel' ? t('accounts.step1_bigmodel') : t('accounts.step1_zai')}</p>
                   <div className="flex items-center gap-2">
                     <Input readOnly value={flow.url} className="min-w-0 flex-1 font-mono text-xs" />
-                    <Button variant="outline" size="sm" onClick={copyLoginUrl}>複製</Button>
-                    <Button size="sm" onClick={openLoginUrl}>開啟</Button>
+                    <Button variant="outline" size="sm" onClick={copyLoginUrl}>{t('common.copy')}</Button>
+                    <Button size="sm" onClick={openLoginUrl}>{t('accounts.open')}</Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">2. 頁面顯示「登入已完成」後，複製該頁面瀏覽器網址列的完整地址並貼到這裡：</p>
+                  <p className="text-xs text-muted-foreground">{t('accounts.step2')}</p>
                   <Textarea
                     rows={3}
                     className="font-mono text-xs"
-                    placeholder="https://zcode.z.ai/app/oauth/login?... 或 zcode://oauth/callback?..."
+                    placeholder={t('accounts.callback_placeholder')}
                     value={callbackUrl}
                     onChange={(e) => setCallbackUrl(e.target.value)}
                   />
                   <Button className="h-10 w-full" disabled={completing} onClick={() => void completeLogin()}>
                     {completing ? <Loader2 className="animate-spin" /> : null}
-                    3. 完成匯入
+                    {t('accounts.step3')}
                   </Button>
                   <p className={'text-xs ' + (loginErr ? 'text-destructive' : 'text-muted-foreground')}>{loginStatus}</p>
                 </div>
@@ -808,27 +831,27 @@ export function AccountsPage() {
             {/* 貼上憑證 */}
             <TabsContent value="paste" className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
-                <p className="text-xs text-muted-foreground">每行一個 Coding Plan JWT 或 API Key，已存在的會自動跳過</p>
+                <p className="text-xs text-muted-foreground">{t('accounts.paste_hint')}</p>
                 <Textarea
                   rows={7}
                   className="font-mono text-xs"
-                  placeholder="貼上 JWT / API Key，每行一個..."
+                  placeholder={t('accounts.paste_placeholder')}
                   value={tokensText}
                   onChange={(e) => setTokensText(e.target.value)}
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label>出口線路</Label>
+                <Label>{t('accounts.proxy_label')}</Label>
                 <ProxySelect value={addProxy} onChange={setAddProxy} proxies={proxies} />
               </div>
             </TabsContent>
           </Tabs>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>{t('common.cancel')}</Button>
             {addTab === 'paste' && (
               <Button disabled={adding} onClick={() => void doAdd()}>
                 {adding ? <Loader2 className="animate-spin" /> : null}
-                新增
+                {t('common.add')}
               </Button>
             )}
           </DialogFooter>
@@ -839,29 +862,29 @@ export function AccountsPage() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>編輯帳號</DialogTitle>
-            <DialogDescription>修改名稱、憑證、出口線路或停用特定模型。</DialogDescription>
+            <DialogTitle>{t('accounts.edit_title')}</DialogTitle>
+            <DialogDescription>{t('accounts.edit_description')}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-name">名稱</Label>
+              <Label htmlFor="edit-name">{t('accounts.name_label')}</Label>
               <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="edit-token">Token</Label>
               <Input
                 id="edit-token"
-                placeholder="留空則不修改"
+                placeholder={t('accounts.token_placeholder')}
                 value={editToken}
                 onChange={(e) => setEditToken(e.target.value)}
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label>出口線路</Label>
+              <Label>{t('accounts.proxy_label')}</Label>
               <ProxySelect value={editProxy} onChange={setEditProxy} proxies={proxies} legacy={editLegacy} />
             </div>
             <div className="flex flex-col gap-2">
-              <Label>停用模型</Label>
+              <Label>{t('accounts.disabled_models_label')}</Label>
               {editModelOptions.length ? (
                 <div className="grid grid-cols-2 gap-2 rounded-lg border p-3">
                   {editModelOptions.map(([key, label]) => (
@@ -877,17 +900,17 @@ export function AccountsPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">尚無可設定模型</p>
+                <p className="text-xs text-muted-foreground">{t('accounts.no_models')}</p>
               )}
-              <p className="text-xs text-muted-foreground">勾選後，此帳號不會參與該模型的任何調度。</p>
+              <p className="text-xs text-muted-foreground">{t('accounts.disabled_models_hint')}</p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>取消</Button>
-            <Button disabled={saving} onClick={() => void doEdit()}>
-              {saving ? <Loader2 className="animate-spin" /> : null}
-              儲存
-            </Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t('common.cancel')}</Button>
+              <Button disabled={saving} onClick={() => void doEdit()}>
+                {saving ? <Loader2 className="animate-spin" /> : null}
+                {t('common.save')}
+              </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -899,7 +922,8 @@ export function AccountsPage() {
 
 /* 賬號欄：截断显示邮箱，悬停出现复制按钮（复制完整邮箱），为右侧操作按钮腾空间 */
 function EmailCell({ account, onCopy }: { account: Account; onCopy: () => void }) {
-  const label = account.email || account.name || '未命名帳號'
+  const { t } = useTranslation()
+  const label = account.email || account.name || t('accounts.unnamed')
   return (
     <span className="group/email flex min-w-0 items-center gap-1">
       <span className="max-w-44 truncate font-medium" title={label}>
@@ -908,7 +932,7 @@ function EmailCell({ account, onCopy }: { account: Account; onCopy: () => void }
       <button
         type="button"
         onClick={onCopy}
-        title="複製"
+        title={t('common.copy')}
         className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus:opacity-100 group-hover/email:opacity-100"
       >
         <Copy className="size-3" />
@@ -945,14 +969,15 @@ function ProxySelect({
   proxies: ProxyProfile[]
   legacy?: boolean
 }) {
+  const { t } = useTranslation()
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-full">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={PROXY_DIRECT}>直連（不使用代理）</SelectItem>
-        {legacy && <SelectItem value={PROXY_LEGACY}>舊版自訂代理（保持不變）</SelectItem>}
+        <SelectItem value={PROXY_DIRECT}>{t('accounts.direct_no_proxy')}</SelectItem>
+        {legacy && <SelectItem value={PROXY_LEGACY}>{t('accounts.legacy_proxy_keep')}</SelectItem>}
         {proxies.map((p) => (
           <SelectItem key={p.id} value={p.id}>
             {p.name} · {proxyScheme(p.url)}
@@ -965,19 +990,20 @@ function ProxySelect({
 
 /* 累計 Tokens 欄：入／出／快取三行 */
 function TokensCell({ account }: { account: Account }) {
-  const t = account.total_tokens || { input: 0, output: 0, cache_creation: 0, cache_read: 0 }
-  const i = Number(t.input) || 0
-  const o = Number(t.output) || 0
-  const c = (Number(t.cache_creation) || 0) + (Number(t.cache_read) || 0)
+  const { t } = useTranslation()
+  const tt = account.total_tokens || { input: 0, output: 0, cache_creation: 0, cache_read: 0 }
+  const i = Number(tt.input) || 0
+  const o = Number(tt.output) || 0
+  const c = (Number(tt.cache_creation) || 0) + (Number(tt.cache_read) || 0)
   if (!i && !o && !c) return <span className="text-muted-foreground">—</span>
   return (
     <div
       className="flex flex-col items-center gap-0.5 text-[11px] leading-tight"
-      title={`輸入 ${i.toLocaleString()} · 輸出 ${o.toLocaleString()} · 快取 ${c.toLocaleString()}`}
+      title={t('accounts.tokens_tooltip', { in: i.toLocaleString(), out: o.toLocaleString(), cache: c.toLocaleString() })}
     >
-      <span><span className="text-muted-foreground">入</span> <b className="tabular-nums">{fmtCompact(i)}</b></span>
-      <span><span className="text-muted-foreground">出</span> <b className="tabular-nums">{fmtCompact(o)}</b></span>
-      {c ? <span><span className="text-muted-foreground">緩</span> <b className="tabular-nums">{fmtCompact(c)}</b></span> : null}
+      <span><span className="text-muted-foreground">{t('accounts.io_in')}</span> <b className="tabular-nums">{fmtCompact(i)}</b></span>
+      <span><span className="text-muted-foreground">{t('accounts.io_out')}</span> <b className="tabular-nums">{fmtCompact(o)}</b></span>
+      {c ? <span><span className="text-muted-foreground">{t('accounts.io_cache')}</span> <b className="tabular-nums">{fmtCompact(c)}</b></span> : null}
     </div>
   )
 }

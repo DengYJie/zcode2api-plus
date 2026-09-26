@@ -1,4 +1,5 @@
 /* 統一的後台 API 呼叫封裝：自動附 Bearer、401 時清除密鑰導回登入頁 */
+import i18next from '@/i18n'
 import { adminKey } from '@/lib/admin-key'
 
 const ADMIN_API = '/admin/api'
@@ -29,7 +30,7 @@ export async function api<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', path: st
   if (r.status === 401) {
     adminKey.clear()
     location.href = '/admin/login'
-    throw new Error('登入已過期，請重新登入')
+    throw new Error(i18next.t('common.login_expired'))
   }
   if (!r.ok) {
     const d = await r.json().catch(() => ({}) as { detail?: string })

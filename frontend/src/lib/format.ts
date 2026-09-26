@@ -1,4 +1,5 @@
 /* 數值與時間格式化工具（對應舊版 ui.js 的共用語義） */
+import i18next from '@/i18n'
 
 /* 千分位整數 */
 export function fmt(v: number | null | undefined): string {
@@ -24,21 +25,21 @@ export function fmtDate(ts: number | null | undefined): string {
 
 /* epoch 秒 → 相對時間（最近活動用） */
 export function relativeTime(ts: number | null | undefined): string {
-  if (!ts) return '尚未使用'
+  if (!ts) return i18next.t('time.never_used')
   const sec = Math.max(0, Date.now() / 1000 - ts)
-  if (sec < 60) return '剛剛'
-  if (sec < 3600) return `${Math.floor(sec / 60)} 分鐘前`
-  if (sec < 86400) return `${Math.floor(sec / 3600)} 小時前`
-  return `${Math.floor(sec / 86400)} 天前`
+  if (sec < 60) return i18next.t('time.just_now')
+  if (sec < 3600) return i18next.t('time.minutes_ago', { n: Math.floor(sec / 60) })
+  if (sec < 86400) return i18next.t('time.hours_ago', { n: Math.floor(sec / 3600) })
+  return i18next.t('time.days_ago', { n: Math.floor(sec / 86400) })
 }
 
 /* 秒數 → 人類可讀時長（運維監控用） */
 export function duration(sec: number | null | undefined): string {
   sec = Number(sec || 0)
-  if (sec < 60) return `${sec} 秒`
-  if (sec < 3600) return `${Math.floor(sec / 60)} 分鐘`
-  if (sec < 86400) return `${Math.floor(sec / 3600)} 小時`
-  return `${Math.floor(sec / 86400)} 天`
+  if (sec < 60) return i18next.t('time.seconds', { n: sec })
+  if (sec < 3600) return i18next.t('time.minutes', { n: Math.floor(sec / 60) })
+  if (sec < 86400) return i18next.t('time.hours', { n: Math.floor(sec / 3600) })
+  return i18next.t('time.days', { n: Math.floor(sec / 86400) })
 }
 
 /* HTML 跳脫（僅用於少數需要組 HTML 字串的場景，React 下大多不需手動跳脫） */
